@@ -1,5 +1,23 @@
 # generic-notes-app
 
+## Android App
+
+This repository now includes a minimal native Android notes app built with Kotlin and Jetpack Compose.
+
+The first screen is a full-screen white canvas intended for Samsung tablets and S Pen workflows. It accepts pressure-aware touch input from an S Pen or finger and renders each stroke with pressure-based width changes. A top-right button toggles edit state:
+
+- `Lock edits` prevents new strokes from being added.
+- `Unlock edits` restores drawing input.
+
+### Open in Android Studio
+
+1. Open this folder in Android Studio.
+2. Let Android Studio sync the Gradle project.
+3. Connect a Samsung tablet with USB debugging enabled, or start an Android tablet emulator.
+4. Run the `app` configuration.
+
+The app uses `minSdk 26`, `targetSdk 35`, and `compileSdk 35`.
+
 ## Overview
 
 `generic-notes-app` is an open-source, generic notes application that serves as the **reference implementation counterpart** to the [`hwdn-format-spec`](https://github.com/jg925/hwdn-format-spec) repository.
