@@ -4,7 +4,7 @@
 
 This repository now includes a minimal native Android notes app built with Kotlin and Jetpack Compose.
 
-The first screen is a full-screen white canvas intended for Samsung tablets and S Pen workflows. It accepts pressure-aware touch input from an S Pen or finger and renders each stroke with pressure-based width changes. A top-right button toggles edit state:
+The app starts by asking whether to open an existing `.hwdn` file or create a new one. Once a note is chosen, it shows a full-screen white canvas intended for Samsung tablets and S Pen workflows. It accepts pressure-aware touch input from an S Pen or finger and renders each stroke with pressure-based width changes. A top-right button toggles edit state:
 
 - `Lock edits` prevents new strokes from being added.
 - `Unlock edits` restores drawing input.
