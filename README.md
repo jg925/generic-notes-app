@@ -52,4 +52,4 @@ Contributions are welcome! If you find an issue with how this app interprets the
 
 ## License
 
-This project is open source. See [LICENSE](./LICENSE) for details.
+This project is licensed under the MIT License. See [LICENSE](./LICENSE) for details.
