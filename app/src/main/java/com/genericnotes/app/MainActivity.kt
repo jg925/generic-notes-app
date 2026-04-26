@@ -13,14 +13,19 @@ import android.view.View
 import android.view.Window
 import android.view.WindowInsets
 import android.view.WindowInsetsController
+import android.widget.Toast
 import androidx.activity.ComponentActivity
+import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -41,10 +46,18 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.graphics.vector.path
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
+import java.io.ByteArrayOutputStream
+import java.time.Instant
+import java.util.UUID
+import java.util.zip.ZipEntry
+import java.util.zip.ZipOutputStream
 import kotlin.math.max
 import kotlin.math.min
+import org.json.JSONArray
+import org.json.JSONObject
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -63,8 +76,33 @@ class MainActivity : ComponentActivity() {
 
 @Composable
 private fun NotesCanvasScreen() {
+    val context = LocalContext.current
     var isLocked by remember { mutableStateOf(false) }
     var selectedTool by remember { mutableStateOf(DrawingTool.Pen) }
+    var fileName by remember { mutableStateOf("Untitled Note") }
+    var inkCanvasView by remember { mutableStateOf<InkCanvasView?>(null) }
+    var pendingDocumentBytes by remember { mutableStateOf<ByteArray?>(null) }
+    var pendingFileName by remember { mutableStateOf<String?>(null) }
+    val saveDocumentLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.CreateDocument(HwdnMimeType),
+    ) { uri ->
+        val documentBytes = pendingDocumentBytes
+        val documentName = pendingFileName
+        pendingDocumentBytes = null
+        pendingFileName = null
+
+        if (uri == null || documentBytes == null || documentName == null) return@rememberLauncherForActivityResult
+
+        runCatching {
+            context.contentResolver.openOutputStream(uri)?.use { outputStream ->
+                outputStream.write(documentBytes)
+            } ?: error("Unable to open save destination.")
+        }.onSuccess {
+            Toast.makeText(context, "Saved $documentName", Toast.LENGTH_SHORT).show()
+        }.onFailure {
+            Toast.makeText(context, "Save failed", Toast.LENGTH_SHORT).show()
+        }
+    }
 
     Box(
         modifier = Modifier
@@ -72,12 +110,29 @@ private fun NotesCanvasScreen() {
             .background(Color.White)
     ) {
         AndroidView(
-            factory = { context -> InkCanvasView(context) },
+            factory = { viewContext ->
+                InkCanvasView(viewContext).also { inkCanvasView = it }
+            },
             update = { inkCanvas ->
                 inkCanvas.isLocked = isLocked
                 inkCanvas.selectedTool = selectedTool
             },
             modifier = Modifier.fillMaxSize(),
+        )
+
+        FilePanel(
+            fileName = fileName,
+            onFileNameChange = { fileName = it.withoutHwdnExtension().take(MaxFileNameLength) },
+            onSave = {
+                val hwdnFileName = fileName.toHwdnFileName()
+                val canvasView = inkCanvasView ?: return@FilePanel
+                pendingDocumentBytes = canvasView.exportHwdnPackage(hwdnFileName)
+                pendingFileName = hwdnFileName
+                saveDocumentLauncher.launch(hwdnFileName)
+            },
+            modifier = Modifier
+                .align(Alignment.TopStart)
+                .padding(24.dp),
         )
 
         Surface(
@@ -121,6 +176,68 @@ private fun NotesCanvasScreen() {
             shape = RoundedCornerShape(8.dp),
         ) {
             Text(if (isLocked) "Unlock edits" else "Lock edits")
+        }
+    }
+}
+
+@Composable
+private fun FilePanel(
+    fileName: String,
+    onFileNameChange: (String) -> Unit,
+    onSave: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Surface(
+        modifier = modifier,
+        color = Color(0xFFF4F4F4),
+        contentColor = Color(0xFF111111),
+        shape = RoundedCornerShape(8.dp),
+        tonalElevation = 2.dp,
+        shadowElevation = 2.dp,
+    ) {
+        Row(
+            modifier = Modifier.padding(start = 12.dp, top = 6.dp, end = 6.dp, bottom = 6.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            BasicTextField(
+                value = fileName,
+                onValueChange = onFileNameChange,
+                singleLine = true,
+                textStyle = MaterialTheme.typography.bodyMedium.copy(color = Color(0xFF111111)),
+                cursorBrush = SolidColor(Color(0xFF111111)),
+                modifier = Modifier.width(156.dp),
+                decorationBox = { innerTextField ->
+                    Box {
+                        if (fileName.isBlank()) {
+                            Text(
+                                text = "Untitled Note",
+                                color = Color(0xFF777777),
+                                style = MaterialTheme.typography.bodyMedium,
+                            )
+                        }
+                        innerTextField()
+                    }
+                },
+            )
+            Text(
+                text = HwdnExtension,
+                color = Color(0xFF555555),
+                style = MaterialTheme.typography.bodyMedium,
+            )
+            IconButton(
+                onClick = onSave,
+                modifier = Modifier.size(44.dp),
+                colors = IconButtonDefaults.iconButtonColors(
+                    containerColor = Color.Transparent,
+                    contentColor = Color(0xFF111111),
+                ),
+            ) {
+                Icon(
+                    imageVector = SaveIcon,
+                    contentDescription = "Save",
+                    modifier = Modifier.size(22.dp),
+                )
+            }
         }
     }
 }
@@ -210,24 +327,28 @@ private class InkCanvasView(context: Context) : View(context) {
         when (event.actionMasked) {
             MotionEvent.ACTION_DOWN -> {
                 parent?.requestDisallowInterceptTouchEvent(true)
-                activeStroke = InkStroke(selectedTool).also { stroke ->
+                activeStroke = InkStroke(
+                    tool = selectedTool,
+                    startedAt = Instant.now(),
+                    startEventTimeMillis = event.eventTime,
+                ).also { stroke ->
                     strokes.add(stroke)
                     appendHistoricalPoints(stroke, event)
-                    appendPoint(stroke, event.x, event.y, event.pressure)
+                    appendPoint(stroke, event.x, event.y, event.pressure, event.eventTime)
                 }
             }
 
             MotionEvent.ACTION_MOVE -> {
                 activeStroke?.let { stroke ->
                     appendHistoricalPoints(stroke, event)
-                    appendPoint(stroke, event.x, event.y, event.pressure)
+                    appendPoint(stroke, event.x, event.y, event.pressure, event.eventTime)
                 }
             }
 
             MotionEvent.ACTION_UP,
             MotionEvent.ACTION_CANCEL -> {
                 activeStroke?.let { stroke ->
-                    appendPoint(stroke, event.x, event.y, event.pressure)
+                    appendPoint(stroke, event.x, event.y, event.pressure, event.eventTime)
                 }
                 activeStroke = null
                 hideEraserPreview()
@@ -245,14 +366,21 @@ private class InkCanvasView(context: Context) : View(context) {
                 x = event.getHistoricalX(index),
                 y = event.getHistoricalY(index),
                 pressure = event.getHistoricalPressure(index),
+                eventTimeMillis = event.getHistoricalEventTime(index),
             )
         }
     }
 
-    private fun appendPoint(stroke: InkStroke, x: Float, y: Float, pressure: Float) {
+    private fun appendPoint(
+        stroke: InkStroke,
+        x: Float,
+        y: Float,
+        pressure: Float,
+        eventTimeMillis: Long,
+    ) {
         val previousIndex = stroke.lastIndex
         val coercedPressure = pressure.coerceIn(0.05f, 1.5f)
-        stroke.addPoint(x, y, coercedPressure)
+        stroke.addPoint(x, y, coercedPressure, eventTimeMillis)
         if (stroke.tool == DrawingTool.Eraser) {
             showEraserPreview(x, y)
         }
@@ -406,6 +534,116 @@ private class InkCanvasView(context: Context) : View(context) {
         )
     }
 
+    fun exportHwdnPackage(fileName: String): ByteArray {
+        val exportedAt = Instant.now()
+        val packageId = "note-${UUID.randomUUID()}"
+        val documentId = "doc-${UUID.randomUUID()}"
+        val canvasId = "canvas-${UUID.randomUUID()}"
+        val title = fileName.withoutHwdnExtension().trim().ifBlank { "Untitled Note" }
+        val canvasWidth = width.coerceAtLeast(1)
+        val canvasHeight = height.coerceAtLeast(1)
+        val noteJson = createNoteJson(
+            documentId = documentId,
+            canvasId = canvasId,
+            title = title,
+            timestamp = exportedAt,
+            canvasWidth = canvasWidth,
+            canvasHeight = canvasHeight,
+        )
+        val manifestJson = createManifestJson(
+            packageId = packageId,
+            fileName = fileName,
+            timestamp = exportedAt,
+        )
+
+        return ByteArrayOutputStream().use { byteOutput ->
+            ZipOutputStream(byteOutput).use { zipOutput ->
+                zipOutput.writeJsonEntry("manifest.json", manifestJson)
+                zipOutput.writeJsonEntry("note.json", noteJson)
+                zipOutput.putNextEntry(ZipEntry("assets/"))
+                zipOutput.closeEntry()
+            }
+            byteOutput.toByteArray()
+        }
+    }
+
+    private fun createManifestJson(packageId: String, fileName: String, timestamp: Instant): JSONObject =
+        JSONObject()
+            .put("format", "hwdn")
+            .put("formatVersion", HwdnFormatVersion)
+            .put("id", packageId)
+            .put("fileName", fileName)
+            .put("createdAt", timestamp.toString())
+            .put("modifiedAt", timestamp.toString())
+            .put(
+                "createdBy",
+                JSONObject()
+                    .put("name", SourceApplicationName)
+                    .put("version", SourceApplicationVersion),
+            )
+            .put("payload", "note.json")
+            .put(
+                "features",
+                JSONArray()
+                    .put(
+                        JSONObject()
+                            .put("name", "canvas-strokes")
+                            .put("required", true)
+                            .put("version", HwdnFormatVersion),
+                    ),
+            )
+
+    private fun createNoteJson(
+        documentId: String,
+        canvasId: String,
+        title: String,
+        timestamp: Instant,
+        canvasWidth: Int,
+        canvasHeight: Int,
+    ): JSONObject {
+        val canvasSize = JSONObject()
+            .put("width", canvasWidth)
+            .put("height", canvasHeight)
+
+        return JSONObject()
+            .put(
+                "document",
+                JSONObject()
+                    .put("id", documentId)
+                    .put("title", title)
+                    .put("createdAt", timestamp.toString())
+                    .put("modifiedAt", timestamp.toString())
+                    .put("units", "px")
+                    .put("canvasSize", canvasSize)
+                    .put(
+                        "sourceApplication",
+                        JSONObject()
+                            .put("name", SourceApplicationName)
+                            .put("version", SourceApplicationVersion),
+                    ),
+            )
+            .put(
+                "canvas",
+                JSONObject()
+                    .put("id", canvasId)
+                    .put("size", canvasSize)
+                    .put(
+                        "background",
+                        JSONObject()
+                            .put("color", "#ffffff")
+                            .put("style", "blank"),
+                    )
+                    .put(
+                        "strokes",
+                        JSONArray().apply {
+                            strokes.forEachIndexed { index, stroke ->
+                                put(stroke.toJson(index + 1))
+                            }
+                        },
+                    )
+                    .put("ocr", JSONArray()),
+            )
+    }
 }
 
 private fun enterFullscreen(window: Window) {
@@ -437,7 +675,17 @@ private fun DrawingTool.strokeWidth(pressure: Float): Float =
         DrawingTool.Eraser -> EraserStrokeWidth
     }
 
-private class InkStroke(val tool: DrawingTool) {
+private val DrawingTool.serializedName: String
+    get() = when (this) {
+        DrawingTool.Pen -> "pen"
+        DrawingTool.Eraser -> "eraser"
+    }
+
+private class InkStroke(
+    val tool: DrawingTool,
+    private val startedAt: Instant,
+    private val startEventTimeMillis: Long,
+) {
     private var points = FloatArray(InitialPointCapacity * PointStride)
     var size = 0
         private set
@@ -445,12 +693,13 @@ private class InkStroke(val tool: DrawingTool) {
     val lastIndex: Int
         get() = size - 1
 
-    fun addPoint(x: Float, y: Float, pressure: Float) {
+    fun addPoint(x: Float, y: Float, pressure: Float, eventTimeMillis: Long) {
         ensureCapacity(size + 1)
         val offset = size * PointStride
         points[offset] = x
         points[offset + 1] = y
         points[offset + 2] = pressure
+        points[offset + 3] = (eventTimeMillis - startEventTimeMillis).coerceAtLeast(0).toFloat()
         size += 1
     }
 
@@ -460,6 +709,29 @@ private class InkStroke(val tool: DrawingTool) {
 
     fun pressureAt(index: Int): Float = points[index * PointStride + 2]
 
+    private fun tAt(index: Int): Float = points[index * PointStride + 3]
+
+    fun toJson(strokeNumber: Int): JSONObject =
+        JSONObject()
+            .put("id", "stroke-${strokeNumber.toString().padStart(6, '0')}")
+            .put("tool", tool.serializedName)
+            .put("brush", tool.toBrushJson())
+            .put("startedAt", startedAt.toString())
+            .put(
+                "points",
+                JSONArray().apply {
+                    for (index in 0 until size) {
+                        put(
+                            JSONObject()
+                                .put("x", xAt(index).toDouble())
+                                .put("y", yAt(index).toDouble())
+                                .put("t", tAt(index).toDouble())
+                                .put("pressure", tool.exportPressure(pressureAt(index)).toDouble()),
+                        )
+                    }
+                },
+            )
+
     private fun ensureCapacity(pointCapacity: Int) {
         val requiredSize = pointCapacity * PointStride
         if (requiredSize <= points.size) return
@@ -468,13 +740,69 @@ private class InkStroke(val tool: DrawingTool) {
 
     private companion object {
         const val InitialPointCapacity = 128
-        const val PointStride = 3
+        const val PointStride = 4
     }
 }
 
 private fun Float.strokeWidth(): Float = 2f + (this * 8f)
 
+private fun String.withoutHwdnExtension(): String =
+    if (endsWith(HwdnExtension, ignoreCase = true)) {
+        dropLast(HwdnExtension.length)
+    } else {
+        this
+    }
+
+private fun String.toHwdnFileName(): String {
+    val baseName = withoutHwdnExtension()
+        .trim()
+        .replace(InvalidFileNameCharactersRegex, "-")
+        .replace(WhitespaceRegex, " ")
+        .ifBlank { "Untitled Note" }
+        .take(MaxFileNameLength)
+    return "$baseName$HwdnExtension"
+}
+
+private fun DrawingTool.toBrushJson(): JSONObject =
+    when (this) {
+        DrawingTool.Pen ->
+            JSONObject()
+                .put("color", "#111111")
+                .put("baseWidth", PenNominalStrokeWidth.toDouble())
+                .put("opacity", 1)
+                .put("pressureCurve", "linear")
+
+        DrawingTool.Eraser ->
+            JSONObject()
+                .put("color", "#ffffff")
+                .put("baseWidth", EraserStrokeWidth.toDouble())
+                .put("opacity", 1)
+                .put("pressureCurve", "none")
+    }
+
+private fun DrawingTool.exportPressure(pressure: Float): Float =
+    when (this) {
+        DrawingTool.Pen -> pressure.coerceIn(0f, 1f)
+        DrawingTool.Eraser -> 1f
+    }
+
+private fun ZipOutputStream.writeJsonEntry(path: String, jsonObject: JSONObject) {
+    putNextEntry(ZipEntry(path))
+    write(jsonObject.toString(2).toByteArray(Charsets.UTF_8))
+    closeEntry()
+}
+
+private const val PenNominalStrokeWidth = 10f
 private const val EraserStrokeWidth = 48f
+private const val HwdnExtension = ".hwdn"
+private const val HwdnMimeType = "application/zip"
+private const val HwdnFormatVersion = "0.1.0"
+private const val MaxFileNameLength = 80
+private const val SourceApplicationName = "generic-notes-app"
+private const val SourceApplicationVersion = "0.1.0"
+
+private val InvalidFileNameCharactersRegex = Regex("""[\\/:*?"<>|]+""")
+private val WhitespaceRegex = Regex("""\s+""")
 
 private val PenIcon: ImageVector =
     ImageVector.Builder(
@@ -529,6 +857,36 @@ private val EraserIcon: ImageVector =
             lineTo(22.0f, 21.5f)
             lineTo(22.0f, 19.5f)
             lineTo(12.0f, 19.5f)
+            close()
+        }
+    }.build()
+
+private val SaveIcon: ImageVector =
+    ImageVector.Builder(
+        name = "Save",
+        defaultWidth = 24.dp,
+        defaultHeight = 24.dp,
+        viewportWidth = 24f,
+        viewportHeight = 24f,
+    ).apply {
+        path(fill = SolidColor(Color.Black)) {
+            moveTo(4.0f, 3.0f)
+            lineTo(17.0f, 3.0f)
+            lineTo(21.0f, 7.0f)
+            lineTo(21.0f, 21.0f)
+            lineTo(3.0f, 21.0f)
+            lineTo(3.0f, 4.0f)
+            curveTo(3.0f, 3.45f, 3.45f, 3.0f, 4.0f, 3.0f)
+            close()
+            moveTo(7.0f, 5.0f)
+            lineTo(7.0f, 10.0f)
+            lineTo(16.0f, 10.0f)
+            lineTo(16.0f, 5.0f)
+            close()
+            moveTo(7.0f, 14.0f)
+            lineTo(7.0f, 19.0f)
+            lineTo(17.0f, 19.0f)
+            lineTo(17.0f, 14.0f)
             close()
         }
     }.build()
