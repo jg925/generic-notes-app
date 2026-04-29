@@ -25,6 +25,14 @@ internal class InkCanvasView(context: Context) : View(context) {
             if (value != DrawingTool.Eraser) hideEraserPreview()
         }
     var ignoreTouchInput: Boolean = false
+    var onCanUndoChanged: ((Boolean) -> Unit)? = null
+        set(value) {
+            field = value
+            value?.invoke(canUndo)
+        }
+
+    val canUndo: Boolean
+        get() = strokes.isNotEmpty()
 
     private val strokes = mutableListOf<InkStroke>()
     private val dirtyBounds = RectF()
@@ -134,9 +142,25 @@ internal class InkCanvasView(context: Context) : View(context) {
         strokes.clear()
         strokes.addAll(documentStrokes)
         redrawAllStrokes()
+        notifyCanUndoChanged()
     }
 
     fun strokesSnapshot(): List<InkStroke> = strokes.toList()
+
+    fun undoLastStroke(): Boolean {
+        if (strokes.isEmpty()) return false
+
+        val removedStroke = strokes.removeAt(strokes.lastIndex)
+        if (activeStroke === removedStroke) {
+            activeStroke = null
+            activePointerId = null
+            parent?.requestDisallowInterceptTouchEvent(false)
+        }
+        hideEraserPreview()
+        redrawAllStrokes()
+        notifyCanUndoChanged()
+        return true
+    }
 
     private fun startStrokeFromPointer(event: MotionEvent, pointerIndex: Int) {
         if (!acceptsInputFrom(event, pointerIndex)) return
@@ -149,6 +173,7 @@ internal class InkCanvasView(context: Context) : View(context) {
             startEventTimeMillis = event.eventTime,
         ).also { stroke ->
             strokes.add(stroke)
+            notifyCanUndoChanged()
             appendHistoricalPoints(stroke, event, pointerIndex)
             appendPoint(
                 stroke = stroke,
@@ -158,6 +183,10 @@ internal class InkCanvasView(context: Context) : View(context) {
                 eventTimeMillis = event.eventTime,
             )
         }
+    }
+
+    private fun notifyCanUndoChanged() {
+        onCanUndoChanged?.invoke(canUndo)
     }
 
     private fun activePointerIndex(event: MotionEvent): Int {

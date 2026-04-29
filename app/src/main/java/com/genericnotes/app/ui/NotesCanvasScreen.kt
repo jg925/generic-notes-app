@@ -58,8 +58,9 @@ internal fun NotesCanvasScreen(
     var ignoreTouchInput by remember { mutableStateOf(false) }
     val shouldIgnoreTouchInput = supportsTrueStylusInput && ignoreTouchInput
     var fileName by remember(initialDocument) {
-        mutableStateOf(initialDocument?.fileName?.withoutHwdnExtension()?.take(MaxFileNameLength) ?: "Untitled Note")
+        mutableStateOf(initialDocument?.fileName?.withoutHwdnExtension()?.take(MaxFileNameLength) ?: "")
     }
+    var canUndo by remember(initialDocument) { mutableStateOf(initialDocument?.strokes?.isNotEmpty() == true) }
     var inkCanvasView by remember { mutableStateOf<InkCanvasView?>(null) }
     var pendingDocumentBytes by remember { mutableStateOf<ByteArray?>(null) }
     var pendingFileName by remember { mutableStateOf<String?>(null) }
@@ -93,6 +94,7 @@ internal fun NotesCanvasScreen(
         AndroidView(
             factory = { viewContext ->
                 InkCanvasView(viewContext).also { canvasView ->
+                    canvasView.onCanUndoChanged = { canUndo = it }
                     initialDocument?.strokes?.let(canvasView::loadStrokes)
                     inkCanvasView = canvasView
                 }
@@ -139,6 +141,18 @@ internal fun NotesCanvasScreen(
                 modifier = Modifier.padding(horizontal = 6.dp, vertical = 6.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
+                ToolButton(
+                    icon = UndoIcon,
+                    contentDescription = "Undo",
+                    selected = false,
+                    enabled = canUndo,
+                    onClick = {
+                        inkCanvasView?.let { canvasView ->
+                            canvasView.undoLastStroke()
+                            canUndo = canvasView.canUndo
+                        }
+                    },
+                )
                 ToolButton(
                     icon = PenIcon,
                     contentDescription = "Pen",
@@ -223,10 +237,12 @@ private fun ToolButton(
     contentDescription: String,
     selected: Boolean,
     onClick: () -> Unit,
+    enabled: Boolean = true,
     struckThrough: Boolean = false,
 ) {
     IconButton(
         onClick = onClick,
+        enabled = enabled,
         modifier = Modifier.size(44.dp),
         colors = IconButtonDefaults.iconButtonColors(
             containerColor = if (selected) Color(0xFF111111) else Color.Transparent,

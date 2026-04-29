@@ -63,6 +63,33 @@ internal val EraserIcon: ImageVector =
         }
     }.build()
 
+internal val UndoIcon: ImageVector =
+    ImageVector.Builder(
+        name = "Undo",
+        defaultWidth = 24.dp,
+        defaultHeight = 24.dp,
+        viewportWidth = 24f,
+        viewportHeight = 24f,
+    ).apply {
+        path(fill = SolidColor(Color.Black)) {
+            moveTo(12.0f, 5.0f)
+            lineTo(12.0f, 1.75f)
+            lineTo(6.25f, 7.5f)
+            lineTo(12.0f, 13.25f)
+            lineTo(12.0f, 9.0f)
+            curveTo(14.76f, 9.0f, 17.0f, 11.24f, 17.0f, 14.0f)
+            curveTo(17.0f, 16.76f, 14.76f, 19.0f, 12.0f, 19.0f)
+            curveTo(9.24f, 19.0f, 7.0f, 16.76f, 7.0f, 14.0f)
+            curveTo(7.0f, 13.02f, 7.28f, 12.11f, 7.77f, 11.34f)
+            lineTo(5.6f, 10.08f)
+            curveTo(4.9f, 11.23f, 4.5f, 12.58f, 4.5f, 14.0f)
+            curveTo(4.5f, 18.14f, 7.86f, 21.5f, 12.0f, 21.5f)
+            curveTo(16.14f, 21.5f, 19.5f, 18.14f, 19.5f, 14.0f)
+            curveTo(19.5f, 9.86f, 16.14f, 6.5f, 12.0f, 6.5f)
+            close()
+        }
+    }.build()
+
 internal val HandIcon: ImageVector =
     ImageVector.Builder(
         name = "Hand",
