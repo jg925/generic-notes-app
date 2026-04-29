@@ -61,6 +61,7 @@ internal fun NotesCanvasScreen(
         mutableStateOf(initialDocument?.fileName?.withoutHwdnExtension()?.take(MaxFileNameLength) ?: "")
     }
     var canUndo by remember(initialDocument) { mutableStateOf(initialDocument?.strokes?.isNotEmpty() == true) }
+    var canRedo by remember(initialDocument) { mutableStateOf(false) }
     var inkCanvasView by remember { mutableStateOf<InkCanvasView?>(null) }
     var pendingDocumentBytes by remember { mutableStateOf<ByteArray?>(null) }
     var pendingFileName by remember { mutableStateOf<String?>(null) }
@@ -95,6 +96,7 @@ internal fun NotesCanvasScreen(
             factory = { viewContext ->
                 InkCanvasView(viewContext).also { canvasView ->
                     canvasView.onCanUndoChanged = { canUndo = it }
+                    canvasView.onCanRedoChanged = { canRedo = it }
                     initialDocument?.strokes?.let(canvasView::loadStrokes)
                     inkCanvasView = canvasView
                 }
@@ -150,6 +152,18 @@ internal fun NotesCanvasScreen(
                         inkCanvasView?.let { canvasView ->
                             canvasView.undoLastStroke()
                             canUndo = canvasView.canUndo
+                        }
+                    },
+                )
+                ToolButton(
+                    icon = RedoIcon,
+                    contentDescription = "redo",
+                    selected = false,
+                    enabled = canRedo,
+                    onClick = {
+                        inkCanvasView?.let { canvasView ->
+                            canvasView.redoLastStroke()
+                            canRedo = canvasView.canRedo
                         }
                     },
                 )

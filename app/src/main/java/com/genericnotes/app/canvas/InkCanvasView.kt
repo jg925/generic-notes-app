@@ -30,11 +30,20 @@ internal class InkCanvasView(context: Context) : View(context) {
             field = value
             value?.invoke(canUndo)
         }
+    var onCanRedoChanged: ((Boolean) -> Unit)? = null
+        set(value) {
+            field = value
+            value?.invoke(canRedo)
+        }
 
     val canUndo: Boolean
         get() = strokes.isNotEmpty()
 
+    val canRedo: Boolean
+        get() = redoStrokes.isNotEmpty()
+
     private val strokes = mutableListOf<InkStroke>()
+    private val redoStrokes = mutableListOf<InkStroke>()
     private val dirtyBounds = RectF()
     private val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         color = android.graphics.Color.BLACK
@@ -140,9 +149,10 @@ internal class InkCanvasView(context: Context) : View(context) {
         activeStroke = null
         hideEraserPreview()
         strokes.clear()
+        redoStrokes.clear()
         strokes.addAll(documentStrokes)
         redrawAllStrokes()
-        notifyCanUndoChanged()
+        notifyHistoryChanged()
     }
 
     fun strokesSnapshot(): List<InkStroke> = strokes.toList()
@@ -151,6 +161,7 @@ internal class InkCanvasView(context: Context) : View(context) {
         if (strokes.isEmpty()) return false
 
         val removedStroke = strokes.removeAt(strokes.lastIndex)
+        redoStrokes.add(removedStroke)
         if (activeStroke === removedStroke) {
             activeStroke = null
             activePointerId = null
@@ -158,7 +169,16 @@ internal class InkCanvasView(context: Context) : View(context) {
         }
         hideEraserPreview()
         redrawAllStrokes()
-        notifyCanUndoChanged()
+        notifyHistoryChanged()
+        return true
+    }
+
+    fun redoLastStroke(): Boolean {
+        if (redoStrokes.isEmpty()) return false
+
+        strokes.add(redoStrokes.removeAt(redoStrokes.lastIndex))
+        redrawAllStrokes()
+        notifyHistoryChanged()
         return true
     }
 
@@ -172,8 +192,9 @@ internal class InkCanvasView(context: Context) : View(context) {
             startedAt = Instant.now(),
             startEventTimeMillis = event.eventTime,
         ).also { stroke ->
+            redoStrokes.clear()
             strokes.add(stroke)
-            notifyCanUndoChanged()
+            notifyHistoryChanged()
             appendHistoricalPoints(stroke, event, pointerIndex)
             appendPoint(
                 stroke = stroke,
@@ -185,8 +206,9 @@ internal class InkCanvasView(context: Context) : View(context) {
         }
     }
 
-    private fun notifyCanUndoChanged() {
+    private fun notifyHistoryChanged() {
         onCanUndoChanged?.invoke(canUndo)
+        onCanRedoChanged?.invoke(canRedo)
     }
 
     private fun activePointerIndex(event: MotionEvent): Int {
