@@ -143,7 +143,7 @@ internal fun NotesCanvasScreen(
             ) {
                 ToolButton(
                     icon = UndoIcon,
-                    contentDescription = "Undo",
+                    contentDescription = "undo",
                     selected = false,
                     enabled = canUndo,
                     onClick = {
@@ -155,20 +155,20 @@ internal fun NotesCanvasScreen(
                 )
                 ToolButton(
                     icon = PenIcon,
-                    contentDescription = "Pen",
+                    contentDescription = "pen",
                     selected = selectedTool == DrawingTool.Pen,
                     onClick = { selectedTool = DrawingTool.Pen },
                 )
                 ToolButton(
                     icon = EraserIcon,
-                    contentDescription = "Eraser",
+                    contentDescription = "eraser",
                     selected = selectedTool == DrawingTool.Eraser,
                     onClick = { selectedTool = DrawingTool.Eraser },
                 )
                 if (supportsTrueStylusInput) {
                     ToolButton(
                         icon = HandIcon,
-                        contentDescription = "Ignore finger touches",
+                        contentDescription = "palm reject",
                         selected = ignoreTouchInput,
                         onClick = { ignoreTouchInput = !ignoreTouchInput },
                         struckThrough = ignoreTouchInput,
@@ -240,33 +240,35 @@ private fun ToolButton(
     enabled: Boolean = true,
     struckThrough: Boolean = false,
 ) {
-    IconButton(
-        onClick = onClick,
-        enabled = enabled,
-        modifier = Modifier.size(44.dp),
-        colors = IconButtonDefaults.iconButtonColors(
-            containerColor = if (selected) Color(0xFF111111) else Color.Transparent,
-            contentColor = if (selected) Color.White else Color(0xFF111111),
-        ),
-    ) {
-        Box(
-            modifier = Modifier.size(22.dp),
-            contentAlignment = Alignment.Center,
+    StylusHoverTooltipBox(tooltipText = contentDescription) {
+        IconButton(
+            onClick = onClick,
+            enabled = enabled,
+            modifier = Modifier.size(44.dp),
+            colors = IconButtonDefaults.iconButtonColors(
+                containerColor = if (selected) Color(0xFF111111) else Color.Transparent,
+                contentColor = if (selected) Color.White else Color(0xFF111111),
+            ),
         ) {
-            Icon(
-                imageVector = icon,
-                contentDescription = contentDescription,
-                modifier = Modifier.fillMaxSize(),
-            )
-            if (struckThrough) {
-                Canvas(modifier = Modifier.fillMaxSize()) {
-                    drawLine(
-                        color = if (selected) Color(0xFF111111) else Color(0xFFF4F4F4),
-                        start = Offset(size.width * 0.18f, size.height * 0.82f),
-                        end = Offset(size.width * 0.82f, size.height * 0.18f),
-                        strokeWidth = 3.dp.toPx(),
-                        cap = StrokeCap.Round,
-                    )
+            Box(
+                modifier = Modifier.size(22.dp),
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(
+                    imageVector = icon,
+                    contentDescription = contentDescription,
+                    modifier = Modifier.fillMaxSize(),
+                )
+                if (struckThrough) {
+                    Canvas(modifier = Modifier.fillMaxSize()) {
+                        drawLine(
+                            color = if (selected) Color(0xFF111111) else Color(0xFFF4F4F4),
+                            start = Offset(size.width * 0.18f, size.height * 0.82f),
+                            end = Offset(size.width * 0.82f, size.height * 0.18f),
+                            strokeWidth = 3.dp.toPx(),
+                            cap = StrokeCap.Round,
+                        )
+                    }
                 }
             }
         }

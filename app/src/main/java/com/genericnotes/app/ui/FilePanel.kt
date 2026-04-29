@@ -65,19 +65,21 @@ internal fun FilePanel(
                 color = Color(0xFF555555),
                 style = MaterialTheme.typography.bodyMedium,
             )
-            IconButton(
-                onClick = onSave,
-                modifier = Modifier.size(44.dp),
-                colors = IconButtonDefaults.iconButtonColors(
-                    containerColor = Color.Transparent,
-                    contentColor = Color(0xFF111111),
-                ),
-            ) {
-                Icon(
-                    imageVector = SaveIcon,
-                    contentDescription = "Save",
-                    modifier = Modifier.size(22.dp),
-                )
+            StylusHoverTooltipBox(tooltipText = "save") {
+                IconButton(
+                    onClick = onSave,
+                    modifier = Modifier.size(44.dp),
+                    colors = IconButtonDefaults.iconButtonColors(
+                        containerColor = Color.Transparent,
+                        contentColor = Color(0xFF111111),
+                    ),
+                ) {
+                    Icon(
+                        imageVector = SaveIcon,
+                        contentDescription = "save",
+                        modifier = Modifier.size(22.dp),
+                    )
+                }
             }
         }
     }
