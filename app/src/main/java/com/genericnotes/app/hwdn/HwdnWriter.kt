@@ -124,8 +124,7 @@ private fun createNoteJson(
                             put(stroke.toJson(index + 1))
                         }
                     },
-                )
-                .put("ocr", JSONArray()),
+                ),
         )
 }
 
