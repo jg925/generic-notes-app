@@ -29,21 +29,35 @@ internal fun HwdnApp() {
         recentFiles = context.loadRecentHwdnFiles()
     }
 
+    fun persistUriPermission(uri: Uri, permissionFlags: Int) {
+        val persisted = runCatching {
+            context.contentResolver.takePersistableUriPermission(uri, permissionFlags)
+        }.isSuccess
+
+        if (!persisted && permissionFlags != Intent.FLAG_GRANT_READ_URI_PERMISSION) {
+            runCatching {
+                context.contentResolver.takePersistableUriPermission(
+                    uri,
+                    Intent.FLAG_GRANT_READ_URI_PERMISSION,
+                )
+            }
+        }
+    }
+
+    fun rememberRecentFile(uri: Uri, displayName: String) {
+        context.rememberRecentHwdnFile(uri, displayName)
+        refreshRecentFiles()
+    }
+
     fun openDocumentUri(uri: Uri, persistPermission: Boolean) {
         runCatching {
             context.readHwdnDocument(uri)
         }.onSuccess { document ->
             if (persistPermission) {
-                runCatching {
-                    context.contentResolver.takePersistableUriPermission(
-                        uri,
-                        Intent.FLAG_GRANT_READ_URI_PERMISSION,
-                    )
-                }
+                persistUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION)
             }
 
-            context.rememberRecentHwdnFile(uri, document.fileName)
-            refreshRecentFiles()
+            rememberRecentFile(uri, document.fileName)
             initialDocument = document
             isEditorOpen = true
         }.onFailure {
@@ -69,7 +83,16 @@ internal fun HwdnApp() {
     }
 
     if (isEditorOpen) {
-        NotesCanvasScreen(initialDocument = initialDocument)
+        NotesCanvasScreen(
+            initialDocument = initialDocument,
+            onDocumentSaved = { uri, documentName ->
+                persistUriPermission(
+                    uri = uri,
+                    permissionFlags = Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION,
+                )
+                rememberRecentFile(uri, documentName)
+            },
+        )
     } else {
         OpenOrCreateScreen(
             onOpenExisting = { openDocumentLauncher.launch(HwdnOpenMimeTypes) },

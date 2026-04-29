@@ -1,5 +1,6 @@
 package com.genericnotes.app.ui
 
+import android.net.Uri
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -38,7 +39,10 @@ import com.genericnotes.app.hwdn.toHwdnFileName
 import com.genericnotes.app.hwdn.withoutHwdnExtension
 
 @Composable
-internal fun NotesCanvasScreen(initialDocument: HwdnDocument?) {
+internal fun NotesCanvasScreen(
+    initialDocument: HwdnDocument?,
+    onDocumentSaved: (Uri, String) -> Unit,
+) {
     val context = LocalContext.current
     var isLocked by remember { mutableStateOf(false) }
     var selectedTool by remember { mutableStateOf(DrawingTool.Pen) }
@@ -63,6 +67,7 @@ internal fun NotesCanvasScreen(initialDocument: HwdnDocument?) {
                 outputStream.write(documentBytes)
             } ?: error("Unable to open save destination.")
         }.onSuccess {
+            onDocumentSaved(uri, documentName)
             Toast.makeText(context, "Saved $documentName", Toast.LENGTH_SHORT).show()
         }.onFailure {
             Toast.makeText(context, "Save failed", Toast.LENGTH_SHORT).show()
