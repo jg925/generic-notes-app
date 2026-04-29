@@ -1,9 +1,14 @@
 package com.genericnotes.app.ui
 
+import android.hardware.input.InputManager
 import android.net.Uri
+import android.os.Handler
+import android.os.Looper
+import android.view.InputDevice
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
@@ -19,13 +24,16 @@ import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
@@ -44,8 +52,11 @@ internal fun NotesCanvasScreen(
     onDocumentSaved: (Uri, String) -> Unit,
 ) {
     val context = LocalContext.current
+    val supportsTrueStylusInput = rememberSupportsTrueStylusInput()
     var isLocked by remember { mutableStateOf(false) }
     var selectedTool by remember { mutableStateOf(DrawingTool.Pen) }
+    var ignoreTouchInput by remember { mutableStateOf(false) }
+    val shouldIgnoreTouchInput = supportsTrueStylusInput && ignoreTouchInput
     var fileName by remember(initialDocument) {
         mutableStateOf(initialDocument?.fileName?.withoutHwdnExtension()?.take(MaxFileNameLength) ?: "Untitled Note")
     }
@@ -89,6 +100,7 @@ internal fun NotesCanvasScreen(
             update = { inkCanvas ->
                 inkCanvas.isLocked = isLocked
                 inkCanvas.selectedTool = selectedTool
+                inkCanvas.ignoreTouchInput = shouldIgnoreTouchInput
             },
             modifier = Modifier.fillMaxSize(),
         )
@@ -139,6 +151,15 @@ internal fun NotesCanvasScreen(
                     selected = selectedTool == DrawingTool.Eraser,
                     onClick = { selectedTool = DrawingTool.Eraser },
                 )
+                if (supportsTrueStylusInput) {
+                    ToolButton(
+                        icon = HandIcon,
+                        contentDescription = "Ignore finger touches",
+                        selected = ignoreTouchInput,
+                        onClick = { ignoreTouchInput = !ignoreTouchInput },
+                        struckThrough = ignoreTouchInput,
+                    )
+                }
             }
         }
 
@@ -159,11 +180,50 @@ internal fun NotesCanvasScreen(
 }
 
 @Composable
+private fun rememberSupportsTrueStylusInput(): Boolean {
+    val context = LocalContext.current
+    var supportsTrueStylusInput by remember(context) { mutableStateOf(context.supportsTrueStylusInput()) }
+
+    DisposableEffect(context) {
+        val inputManager = context.getSystemService(InputManager::class.java)
+        val listener = object : InputManager.InputDeviceListener {
+            override fun onInputDeviceAdded(deviceId: Int) {
+                supportsTrueStylusInput = context.supportsTrueStylusInput()
+            }
+
+            override fun onInputDeviceChanged(deviceId: Int) {
+                supportsTrueStylusInput = context.supportsTrueStylusInput()
+            }
+
+            override fun onInputDeviceRemoved(deviceId: Int) {
+                supportsTrueStylusInput = context.supportsTrueStylusInput()
+            }
+        }
+
+        inputManager?.registerInputDeviceListener(listener, Handler(Looper.getMainLooper()))
+        onDispose {
+            inputManager?.unregisterInputDeviceListener(listener)
+        }
+    }
+
+    return supportsTrueStylusInput
+}
+
+private fun android.content.Context.supportsTrueStylusInput(): Boolean =
+    InputDevice.getDeviceIds().any { deviceId ->
+        InputDevice.getDevice(deviceId)?.let { inputDevice ->
+            inputDevice.supportsSource(InputDevice.SOURCE_STYLUS) ||
+                inputDevice.supportsSource(InputDevice.SOURCE_BLUETOOTH_STYLUS)
+        } == true
+    }
+
+@Composable
 private fun ToolButton(
     icon: androidx.compose.ui.graphics.vector.ImageVector,
     contentDescription: String,
     selected: Boolean,
     onClick: () -> Unit,
+    struckThrough: Boolean = false,
 ) {
     IconButton(
         onClick = onClick,
@@ -173,10 +233,26 @@ private fun ToolButton(
             contentColor = if (selected) Color.White else Color(0xFF111111),
         ),
     ) {
-        Icon(
-            imageVector = icon,
-            contentDescription = contentDescription,
+        Box(
             modifier = Modifier.size(22.dp),
-        )
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(
+                imageVector = icon,
+                contentDescription = contentDescription,
+                modifier = Modifier.fillMaxSize(),
+            )
+            if (struckThrough) {
+                Canvas(modifier = Modifier.fillMaxSize()) {
+                    drawLine(
+                        color = if (selected) Color(0xFF111111) else Color(0xFFF4F4F4),
+                        start = Offset(size.width * 0.18f, size.height * 0.82f),
+                        end = Offset(size.width * 0.82f, size.height * 0.18f),
+                        strokeWidth = 3.dp.toPx(),
+                        cap = StrokeCap.Round,
+                    )
+                }
+            }
+        }
     }
 }
