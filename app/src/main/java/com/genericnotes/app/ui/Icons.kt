@@ -63,6 +63,74 @@ internal val EraserIcon: ImageVector =
         }
     }.build()
 
+internal val UndoIcon: ImageVector =
+    ImageVector.Builder(
+        name = "Undo",
+        defaultWidth = 24.dp,
+        defaultHeight = 24.dp,
+        viewportWidth = 24f,
+        viewportHeight = 24f,
+    ).apply {
+        path(fill = SolidColor(Color.Black)) {
+            moveTo(12.0f, 5.0f)
+            lineTo(12.0f, 1.75f)
+            lineTo(6.25f, 7.5f)
+            lineTo(12.0f, 13.25f)
+            lineTo(12.0f, 9.0f)
+            curveTo(14.76f, 9.0f, 17.0f, 11.24f, 17.0f, 14.0f)
+            curveTo(17.0f, 16.76f, 14.76f, 19.0f, 12.0f, 19.0f)
+            curveTo(9.24f, 19.0f, 7.0f, 16.76f, 7.0f, 14.0f)
+            curveTo(7.0f, 13.02f, 7.28f, 12.11f, 7.77f, 11.34f)
+            lineTo(5.6f, 10.08f)
+            curveTo(4.9f, 11.23f, 4.5f, 12.58f, 4.5f, 14.0f)
+            curveTo(4.5f, 18.14f, 7.86f, 21.5f, 12.0f, 21.5f)
+            curveTo(16.14f, 21.5f, 19.5f, 18.14f, 19.5f, 14.0f)
+            curveTo(19.5f, 9.86f, 16.14f, 6.5f, 12.0f, 6.5f)
+            close()
+        }
+    }.build()
+
+internal val HandIcon: ImageVector =
+    ImageVector.Builder(
+        name = "Hand",
+        defaultWidth = 24.dp,
+        defaultHeight = 24.dp,
+        viewportWidth = 24f,
+        viewportHeight = 24f,
+    ).apply {
+        path(fill = SolidColor(Color.Black)) {
+            moveTo(21.5f, 4.0f)
+            curveTo(20.67f, 4.0f, 20.0f, 4.67f, 20.0f, 5.5f)
+            lineTo(20.0f, 11.0f)
+            lineTo(19.0f, 11.0f)
+            lineTo(19.0f, 2.5f)
+            curveTo(19.0f, 1.67f, 18.33f, 1.0f, 17.5f, 1.0f)
+            curveTo(16.67f, 1.0f, 16.0f, 1.67f, 16.0f, 2.5f)
+            lineTo(16.0f, 11.0f)
+            lineTo(15.0f, 11.0f)
+            lineTo(15.0f, 1.5f)
+            curveTo(15.0f, 0.67f, 14.33f, 0.0f, 13.5f, 0.0f)
+            curveTo(12.67f, 0.0f, 12.0f, 0.67f, 12.0f, 1.5f)
+            lineTo(12.0f, 11.0f)
+            lineTo(11.0f, 11.0f)
+            lineTo(11.0f, 4.0f)
+            curveTo(11.0f, 3.17f, 10.33f, 2.5f, 9.5f, 2.5f)
+            curveTo(8.67f, 2.5f, 8.0f, 3.17f, 8.0f, 4.0f)
+            lineTo(8.0f, 15.9f)
+            lineTo(3.69f, 13.44f)
+            curveTo(3.51f, 13.34f, 3.3f, 13.28f, 3.08f, 13.28f)
+            curveTo(2.78f, 13.28f, 2.51f, 13.38f, 2.29f, 13.57f)
+            curveTo(2.25f, 13.59f, 1.0f, 14.82f, 1.0f, 14.82f)
+            lineTo(8.85f, 22.8f)
+            curveTo(9.6f, 23.56f, 10.62f, 24.0f, 11.7f, 24.0f)
+            lineTo(19.0f, 24.0f)
+            curveTo(21.2f, 24.0f, 23.0f, 22.2f, 23.0f, 20.0f)
+            lineTo(23.0f, 5.5f)
+            curveTo(23.0f, 4.67f, 22.33f, 4.0f, 21.5f, 4.0f)
+            close()
+        }
+    }.build()
+
 internal val SaveIcon: ImageVector =
     ImageVector.Builder(
         name = "Save",

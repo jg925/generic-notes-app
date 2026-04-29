@@ -24,6 +24,15 @@ internal class InkCanvasView(context: Context) : View(context) {
             field = value
             if (value != DrawingTool.Eraser) hideEraserPreview()
         }
+    var ignoreTouchInput: Boolean = false
+    var onCanUndoChanged: ((Boolean) -> Unit)? = null
+        set(value) {
+            field = value
+            value?.invoke(canUndo)
+        }
+
+    val canUndo: Boolean
+        get() = strokes.isNotEmpty()
 
     private val strokes = mutableListOf<InkStroke>()
     private val dirtyBounds = RectF()
@@ -40,6 +49,7 @@ internal class InkCanvasView(context: Context) : View(context) {
     }
     private val eraserXfermode = PorterDuffXfermode(PorterDuff.Mode.CLEAR)
     private var activeStroke: InkStroke? = null
+    private var activePointerId: Int? = null
     private var inkBitmap: Bitmap? = null
     private var inkCanvas: Canvas? = null
     private var eraserPreviewX = 0f
@@ -73,34 +83,53 @@ internal class InkCanvasView(context: Context) : View(context) {
         if (isLocked) return true
 
         when (event.actionMasked) {
-            MotionEvent.ACTION_DOWN -> {
-                parent?.requestDisallowInterceptTouchEvent(true)
-                activeStroke = InkStroke(
-                    tool = selectedTool,
-                    startedAt = Instant.now(),
-                    startEventTimeMillis = event.eventTime,
-                ).also { stroke ->
-                    strokes.add(stroke)
-                    appendHistoricalPoints(stroke, event)
-                    appendPoint(stroke, event.x, event.y, event.pressure, event.eventTime)
+            MotionEvent.ACTION_DOWN,
+            MotionEvent.ACTION_POINTER_DOWN -> {
+                if (activeStroke == null) {
+                    startStrokeFromPointer(event, event.actionIndex)
                 }
             }
 
             MotionEvent.ACTION_MOVE -> {
-                activeStroke?.let { stroke ->
-                    appendHistoricalPoints(stroke, event)
-                    appendPoint(stroke, event.x, event.y, event.pressure, event.eventTime)
+                val pointerIndex = activePointerIndex(event)
+                if (pointerIndex != -1) {
+                    activeStroke?.let { stroke ->
+                        appendHistoricalPoints(stroke, event, pointerIndex)
+                        appendPoint(
+                            stroke = stroke,
+                            x = event.getX(pointerIndex),
+                            y = event.getY(pointerIndex),
+                            pressure = event.getPressure(pointerIndex),
+                            eventTimeMillis = event.eventTime,
+                        )
+                    }
                 }
             }
 
             MotionEvent.ACTION_UP,
+            MotionEvent.ACTION_POINTER_UP,
             MotionEvent.ACTION_CANCEL -> {
-                activeStroke?.let { stroke ->
-                    appendPoint(stroke, event.x, event.y, event.pressure, event.eventTime)
+                val pointerIndex = activePointerIndex(event)
+                val isEndingActivePointer = event.actionMasked == MotionEvent.ACTION_CANCEL ||
+                    pointerIndex == event.actionIndex
+
+                if (isEndingActivePointer && pointerIndex != -1) {
+                    activeStroke?.let { stroke ->
+                        appendPoint(
+                            stroke = stroke,
+                            x = event.getX(pointerIndex),
+                            y = event.getY(pointerIndex),
+                            pressure = event.getPressure(pointerIndex),
+                            eventTimeMillis = event.eventTime,
+                        )
+                    }
                 }
-                activeStroke = null
-                hideEraserPreview()
-                parent?.requestDisallowInterceptTouchEvent(false)
+                if (isEndingActivePointer) {
+                    activePointerId = null
+                    activeStroke = null
+                    hideEraserPreview()
+                    parent?.requestDisallowInterceptTouchEvent(false)
+                }
             }
         }
 
@@ -113,17 +142,75 @@ internal class InkCanvasView(context: Context) : View(context) {
         strokes.clear()
         strokes.addAll(documentStrokes)
         redrawAllStrokes()
+        notifyCanUndoChanged()
     }
 
     fun strokesSnapshot(): List<InkStroke> = strokes.toList()
 
-    private fun appendHistoricalPoints(stroke: InkStroke, event: MotionEvent) {
+    fun undoLastStroke(): Boolean {
+        if (strokes.isEmpty()) return false
+
+        val removedStroke = strokes.removeAt(strokes.lastIndex)
+        if (activeStroke === removedStroke) {
+            activeStroke = null
+            activePointerId = null
+            parent?.requestDisallowInterceptTouchEvent(false)
+        }
+        hideEraserPreview()
+        redrawAllStrokes()
+        notifyCanUndoChanged()
+        return true
+    }
+
+    private fun startStrokeFromPointer(event: MotionEvent, pointerIndex: Int) {
+        if (!acceptsInputFrom(event, pointerIndex)) return
+
+        parent?.requestDisallowInterceptTouchEvent(true)
+        activePointerId = event.getPointerId(pointerIndex)
+        activeStroke = InkStroke(
+            tool = selectedTool,
+            startedAt = Instant.now(),
+            startEventTimeMillis = event.eventTime,
+        ).also { stroke ->
+            strokes.add(stroke)
+            notifyCanUndoChanged()
+            appendHistoricalPoints(stroke, event, pointerIndex)
+            appendPoint(
+                stroke = stroke,
+                x = event.getX(pointerIndex),
+                y = event.getY(pointerIndex),
+                pressure = event.getPressure(pointerIndex),
+                eventTimeMillis = event.eventTime,
+            )
+        }
+    }
+
+    private fun notifyCanUndoChanged() {
+        onCanUndoChanged?.invoke(canUndo)
+    }
+
+    private fun activePointerIndex(event: MotionEvent): Int {
+        val pointerId = activePointerId ?: return -1
+        return event.findPointerIndex(pointerId)
+    }
+
+    private fun acceptsInputFrom(event: MotionEvent, pointerIndex: Int): Boolean {
+        if (!ignoreTouchInput) return true
+
+        return when (event.getToolType(pointerIndex)) {
+            MotionEvent.TOOL_TYPE_STYLUS,
+            MotionEvent.TOOL_TYPE_ERASER -> true
+            else -> false
+        }
+    }
+
+    private fun appendHistoricalPoints(stroke: InkStroke, event: MotionEvent, pointerIndex: Int) {
         for (index in 0 until event.historySize) {
             appendPoint(
                 stroke = stroke,
-                x = event.getHistoricalX(index),
-                y = event.getHistoricalY(index),
-                pressure = event.getHistoricalPressure(index),
+                x = event.getHistoricalX(pointerIndex, index),
+                y = event.getHistoricalY(pointerIndex, index),
+                pressure = event.getHistoricalPressure(pointerIndex, index),
                 eventTimeMillis = event.getHistoricalEventTime(index),
             )
         }
