@@ -3,6 +3,7 @@ package com.genericnotes.app.ui
 import android.content.Intent
 import android.net.Uri
 import android.widget.Toast
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.runtime.Composable
@@ -83,6 +84,11 @@ internal fun HwdnApp() {
     }
 
     if (isEditorOpen) {
+        BackHandler {
+            initialDocument = null
+            isEditorOpen = false
+        }
+
         NotesCanvasScreen(
             initialDocument = initialDocument,
             onDocumentSaved = { uri, documentName ->
