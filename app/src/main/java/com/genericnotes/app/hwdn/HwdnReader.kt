@@ -22,7 +22,7 @@ internal fun Context.readHwdnDocument(uri: Uri): HwdnDocument {
     return parseHwdnPackage(bytes, displayName)
 }
 
-private fun Context.displayNameFor(uri: Uri): String? =
+internal fun Context.displayNameFor(uri: Uri): String? =
     contentResolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)?.use { cursor ->
         val displayNameIndex = cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME)
         if (displayNameIndex >= 0 && cursor.moveToFirst()) {
