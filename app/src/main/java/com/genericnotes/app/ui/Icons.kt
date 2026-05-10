@@ -90,6 +90,33 @@ internal val UndoIcon: ImageVector =
         }
     }.build()
 
+internal val RedoIcon: ImageVector =
+    ImageVector.Builder(
+        name = "Redo",
+        defaultWidth = 24.dp,
+        defaultHeight = 24.dp,
+        viewportWidth = 24f,
+        viewportHeight = 24f,
+    ).apply {
+        path(fill = SolidColor(Color.Black)) {
+            moveTo(12.0f, 5.0f)
+            lineTo(12.0f, 1.75f)
+            lineTo(17.75f, 7.5f)
+            lineTo(12.0f, 13.25f)
+            lineTo(12.0f, 9.0f)
+            curveTo(9.24f, 9.0f, 7.0f, 11.24f, 7.0f, 14.0f)
+            curveTo(7.0f, 16.76f, 9.24f, 19.0f, 12.0f, 19.0f)
+            curveTo(14.76f, 19.0f, 17.0f, 16.76f, 17.0f, 14.0f)
+            curveTo(17.0f, 13.02f, 16.72f, 12.11f, 16.23f, 11.34f)
+            lineTo(18.4f, 10.08f)
+            curveTo(19.1f, 11.23f, 19.5f, 12.58f, 19.5f, 14.0f)
+            curveTo(19.5f, 18.14f, 16.14f, 21.5f, 12.0f, 21.5f)
+            curveTo(7.86f, 21.5f, 4.5f, 18.14f, 4.5f, 14.0f)
+            curveTo(4.5f, 9.86f, 7.86f, 6.5f, 12.0f, 6.5f)
+            close()
+        }
+    }.build()
+
 internal val HandIcon: ImageVector =
     ImageVector.Builder(
         name = "Hand",
