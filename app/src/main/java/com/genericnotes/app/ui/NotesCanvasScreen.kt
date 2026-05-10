@@ -25,6 +25,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -45,6 +46,9 @@ import com.genericnotes.app.hwdn.MaxFileNameLength
 import com.genericnotes.app.hwdn.exportHwdnPackage
 import com.genericnotes.app.hwdn.toHwdnFileName
 import com.genericnotes.app.hwdn.withoutHwdnExtension
+import com.genericnotes.app.settings.AppCanvasSettings
+import com.genericnotes.app.settings.loadAppCanvasSettings
+import com.genericnotes.app.settings.saveAppCanvasSettings
 
 @Composable
 internal fun NotesCanvasScreen(
@@ -53,9 +57,10 @@ internal fun NotesCanvasScreen(
 ) {
     val context = LocalContext.current
     val supportsTrueStylusInput = rememberSupportsTrueStylusInput()
-    var isLocked by remember { mutableStateOf(false) }
-    var selectedTool by remember { mutableStateOf(DrawingTool.Pen) }
-    var ignoreTouchInput by remember { mutableStateOf(false) }
+    val appCanvasSettings = remember(context) { context.loadAppCanvasSettings() }
+    var isLocked by remember(context) { mutableStateOf(appCanvasSettings.isLocked) }
+    var selectedTool by remember(context) { mutableStateOf(appCanvasSettings.selectedTool) }
+    var ignoreTouchInput by remember(context) { mutableStateOf(appCanvasSettings.ignoreTouchInput) }
     val shouldIgnoreTouchInput = supportsTrueStylusInput && ignoreTouchInput
     var fileName by remember(initialDocument) {
         mutableStateOf(initialDocument?.fileName?.withoutHwdnExtension()?.take(MaxFileNameLength) ?: "")
@@ -64,6 +69,17 @@ internal fun NotesCanvasScreen(
     var inkCanvasView by remember { mutableStateOf<InkCanvasView?>(null) }
     var pendingDocumentBytes by remember { mutableStateOf<ByteArray?>(null) }
     var pendingFileName by remember { mutableStateOf<String?>(null) }
+
+    LaunchedEffect(context, isLocked, selectedTool, ignoreTouchInput) {
+        context.saveAppCanvasSettings(
+            AppCanvasSettings(
+                isLocked = isLocked,
+                selectedTool = selectedTool,
+                ignoreTouchInput = ignoreTouchInput,
+            ),
+        )
+    }
+
     val saveDocumentLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.CreateDocument(HwdnMimeType),
     ) { uri ->
