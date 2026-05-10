@@ -228,6 +228,40 @@ internal val SaveIcon: ImageVector =
         }
     }.build()
 
+internal val InfoIcon: ImageVector =
+    ImageVector.Builder(
+        name = "Info",
+        defaultWidth = 24.dp,
+        defaultHeight = 24.dp,
+        viewportWidth = 24f,
+        viewportHeight = 24f,
+    ).apply {
+        path(fill = SolidColor(Color.Black)) {
+            moveTo(11.0f, 17.0f)
+            lineTo(13.0f, 17.0f)
+            lineTo(13.0f, 11.0f)
+            lineTo(11.0f, 11.0f)
+            close()
+            moveTo(12.0f, 2.0f)
+            curveTo(6.48f, 2.0f, 2.0f, 6.48f, 2.0f, 12.0f)
+            curveTo(2.0f, 17.52f, 6.48f, 22.0f, 12.0f, 22.0f)
+            curveTo(17.52f, 22.0f, 22.0f, 17.52f, 22.0f, 12.0f)
+            curveTo(22.0f, 6.48f, 17.52f, 2.0f, 12.0f, 2.0f)
+            close()
+            moveTo(12.0f, 20.0f)
+            curveTo(7.59f, 20.0f, 4.0f, 16.41f, 4.0f, 12.0f)
+            curveTo(4.0f, 7.59f, 7.59f, 4.0f, 12.0f, 4.0f)
+            curveTo(16.41f, 4.0f, 20.0f, 7.59f, 20.0f, 12.0f)
+            curveTo(20.0f, 16.41f, 16.41f, 20.0f, 12.0f, 20.0f)
+            close()
+            moveTo(11.0f, 9.0f)
+            lineTo(13.0f, 9.0f)
+            lineTo(13.0f, 7.0f)
+            lineTo(11.0f, 7.0f)
+            close()
+        }
+    }.build()
+
 internal val AddPageIcon: ImageVector =
     ImageVector.Builder(
         name = "AddPage",
