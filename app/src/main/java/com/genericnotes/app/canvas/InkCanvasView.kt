@@ -215,6 +215,7 @@ internal class InkCanvasView(context: Context) : View(context) {
         return true
     }
 
+    // TODO: add a gap for the split pages view. and draw the line for the seamless view.
     private fun drawPageDividers(canvas: Canvas) {
         if (pageLayout.displayMode != PageDisplayMode.Split) return
 

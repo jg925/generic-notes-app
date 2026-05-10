@@ -370,6 +370,8 @@ private fun android.content.Context.supportsTrueStylusInput(): Boolean =
         } == true
     }
 
+// TODO: when a scroll direction is locked, the icon should still show up, the other option is removed.
+// The number of pages should be a fraction showing which page is currently mostly on screen / total.
 @Composable
 private fun PageControls(
     pageCount: Int,
