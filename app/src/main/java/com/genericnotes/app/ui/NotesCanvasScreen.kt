@@ -10,12 +10,16 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Icon
@@ -36,10 +40,14 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import com.genericnotes.app.canvas.DrawingTool
 import com.genericnotes.app.canvas.InkCanvasView
+import com.genericnotes.app.canvas.NotePageLayout
+import com.genericnotes.app.canvas.PageDisplayMode
+import com.genericnotes.app.canvas.PageScrollDirection
 import com.genericnotes.app.hwdn.HwdnDocument
 import com.genericnotes.app.hwdn.HwdnMimeType
 import com.genericnotes.app.hwdn.MaxFileNameLength
@@ -62,6 +70,22 @@ internal fun NotesCanvasScreen(
     var selectedTool by remember(context) { mutableStateOf(appCanvasSettings.selectedTool) }
     var ignoreTouchInput by remember(context) { mutableStateOf(appCanvasSettings.ignoreTouchInput) }
     val shouldIgnoreTouchInput = supportsTrueStylusInput && ignoreTouchInput
+    val initialPageLayout = initialDocument?.pageLayout ?: NotePageLayout()
+    var pageCount by remember(initialDocument) {
+        mutableStateOf(initialPageLayout.normalizedPageCount)
+    }
+    var pageScrollDirection by remember(initialDocument) {
+        mutableStateOf(initialPageLayout.scrollDirection)
+    }
+    var preferredPageDirection by remember(initialDocument) {
+        mutableStateOf(initialPageLayout.scrollDirection ?: PageScrollDirection.Vertical)
+    }
+    var pageDisplayMode by remember(initialDocument) {
+        mutableStateOf(initialPageLayout.displayMode)
+    }
+    val verticalScrollState = rememberScrollState()
+    val horizontalScrollState = rememberScrollState()
+    var previousPageCount by remember(initialDocument) { mutableStateOf(pageCount) }
     var fileName by remember(initialDocument) {
         mutableStateOf(initialDocument?.fileName?.withoutHwdnExtension()?.take(MaxFileNameLength) ?: "")
     }
@@ -104,28 +128,77 @@ internal fun NotesCanvasScreen(
         }
     }
 
-    Box(
+    LaunchedEffect(pageCount, pageScrollDirection) {
+        if (pageCount > previousPageCount) {
+            when (pageScrollDirection ?: preferredPageDirection) {
+                PageScrollDirection.Vertical -> verticalScrollState.animateScrollTo(verticalScrollState.maxValue)
+                PageScrollDirection.Horizontal -> horizontalScrollState.animateScrollTo(horizontalScrollState.maxValue)
+            }
+        }
+        previousPageCount = pageCount
+    }
+
+    BoxWithConstraints(
         modifier = Modifier
             .fillMaxSize()
-            .background(Color.White)
+            .background(Color(0xFFE9E9E9))
     ) {
-        AndroidView(
-            factory = { viewContext ->
-                InkCanvasView(viewContext).also { canvasView ->
-                    canvasView.onCanUndoChanged = { canUndo = it }
-                    canvasView.onCanResetZoomChanged = { canResetZoom = it }
-                    canvasView.onCanRedoChanged = { canRedo = it }
-                    initialDocument?.strokes?.let(canvasView::loadStrokes)
-                    inkCanvasView = canvasView
-                }
-            },
-            update = { inkCanvas ->
-                inkCanvas.isLocked = isLocked
-                inkCanvas.selectedTool = selectedTool
-                inkCanvas.ignoreTouchInput = shouldIgnoreTouchInput
-            },
-            modifier = Modifier.fillMaxSize(),
+        val density = LocalDensity.current
+        val savedPageWidth = initialPageLayout.pageWidthPx
+            ?.takeIf { it > 0 }
+            ?.let { with(density) { it.toDp() } }
+        val savedPageHeight = initialPageLayout.pageHeightPx
+            ?.takeIf { it > 0 }
+            ?.let { with(density) { it.toDp() } }
+        val pageWidth = savedPageWidth ?: maxWidth
+        val pageHeight = savedPageHeight ?: maxHeight
+        val renderedDirection = pageScrollDirection ?: preferredPageDirection
+        val canvasWidth = if (renderedDirection == PageScrollDirection.Horizontal) {
+            pageWidth * pageCount.toFloat()
+        } else {
+            pageWidth
+        }
+        val canvasHeight = if (renderedDirection == PageScrollDirection.Vertical) {
+            pageHeight * pageCount.toFloat()
+        } else {
+            pageHeight
+        }
+        val renderedPageLayout = NotePageLayout(
+            pageCount = pageCount,
+            scrollDirection = pageScrollDirection,
+            displayMode = pageDisplayMode,
         )
+
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .then(
+                    when (renderedDirection) {
+                        PageScrollDirection.Vertical -> Modifier.verticalScroll(verticalScrollState)
+                        PageScrollDirection.Horizontal -> Modifier.horizontalScroll(horizontalScrollState)
+                    },
+                ),
+        ) {
+            AndroidView(
+                factory = { viewContext ->
+                    InkCanvasView(viewContext).also { canvasView ->
+                        canvasView.pageLayout = renderedPageLayout
+                        canvasView.onCanUndoChanged = { canUndo = it }
+                        canvasView.onCanResetZoomChanged = { canResetZoom = it }
+                        canvasView.onCanRedoChanged = { canRedo = it }
+                        initialDocument?.strokes?.let(canvasView::loadStrokes)
+                        inkCanvasView = canvasView
+                    }
+                },
+                update = { inkCanvas ->
+                    inkCanvas.isLocked = isLocked
+                    inkCanvas.selectedTool = selectedTool
+                    inkCanvas.ignoreTouchInput = shouldIgnoreTouchInput
+                    inkCanvas.pageLayout = renderedPageLayout
+                },
+                modifier = Modifier.size(width = canvasWidth, height = canvasHeight),
+            )
+        }
 
         FilePanel(
             fileName = fileName,
@@ -138,6 +211,11 @@ internal fun NotesCanvasScreen(
                     fileName = hwdnFileName,
                     canvasWidth = canvasView.width,
                     canvasHeight = canvasView.height,
+                    pageLayout = NotePageLayout(
+                        pageCount = pageCount,
+                        scrollDirection = pageScrollDirection,
+                        displayMode = pageDisplayMode,
+                    ),
                 )
                 pendingFileName = hwdnFileName
                 saveDocumentLauncher.launch(hwdnFileName)
@@ -216,6 +294,28 @@ internal fun NotesCanvasScreen(
             }
         }
 
+        PageControls(
+            pageCount = pageCount,
+            preferredDirection = preferredPageDirection,
+            lockedDirection = pageScrollDirection,
+            displayMode = pageDisplayMode,
+            onPreferredDirectionChange = { direction ->
+                if (pageScrollDirection == null) {
+                    preferredPageDirection = direction
+                }
+            },
+            onDisplayModeChange = { pageDisplayMode = it },
+            onAddPage = {
+                if (pageScrollDirection == null) {
+                    pageScrollDirection = preferredPageDirection
+                }
+                pageCount += 1
+            },
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .padding(bottom = 24.dp),
+        )
+
         Button(
             onClick = { isLocked = !isLocked },
             modifier = Modifier
@@ -269,6 +369,74 @@ private fun android.content.Context.supportsTrueStylusInput(): Boolean =
                 inputDevice.supportsSource(InputDevice.SOURCE_BLUETOOTH_STYLUS)
         } == true
     }
+
+@Composable
+private fun PageControls(
+    pageCount: Int,
+    preferredDirection: PageScrollDirection,
+    lockedDirection: PageScrollDirection?,
+    displayMode: PageDisplayMode,
+    onPreferredDirectionChange: (PageScrollDirection) -> Unit,
+    onDisplayModeChange: (PageDisplayMode) -> Unit,
+    onAddPage: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val selectedDirection = lockedDirection ?: preferredDirection
+    val isDirectionLocked = lockedDirection != null
+
+    Surface(
+        modifier = modifier,
+        color = Color(0xFFF4F4F4),
+        contentColor = Color(0xFF111111),
+        shape = RoundedCornerShape(8.dp),
+        tonalElevation = 2.dp,
+        shadowElevation = 2.dp,
+    ) {
+        Row(
+            modifier = Modifier.padding(start = 12.dp, top = 6.dp, end = 6.dp, bottom = 6.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                text = pageCount.toString(),
+                color = Color(0xFF111111),
+                style = androidx.compose.material3.MaterialTheme.typography.bodyMedium,
+                modifier = Modifier.padding(end = 6.dp),
+            )
+            ToolButton(
+                icon = VerticalPagesIcon,
+                contentDescription = "vertical pages",
+                selected = selectedDirection == PageScrollDirection.Vertical,
+                enabled = !isDirectionLocked,
+                onClick = { onPreferredDirectionChange(PageScrollDirection.Vertical) },
+            )
+            ToolButton(
+                icon = HorizontalPagesIcon,
+                contentDescription = "horizontal pages",
+                selected = selectedDirection == PageScrollDirection.Horizontal,
+                enabled = !isDirectionLocked,
+                onClick = { onPreferredDirectionChange(PageScrollDirection.Horizontal) },
+            )
+            ToolButton(
+                icon = SeamlessPagesIcon,
+                contentDescription = "seamless pages",
+                selected = displayMode == PageDisplayMode.Seamless,
+                onClick = { onDisplayModeChange(PageDisplayMode.Seamless) },
+            )
+            ToolButton(
+                icon = SplitPagesIcon,
+                contentDescription = "split pages",
+                selected = displayMode == PageDisplayMode.Split,
+                onClick = { onDisplayModeChange(PageDisplayMode.Split) },
+            )
+            ToolButton(
+                icon = AddPageIcon,
+                contentDescription = "add page",
+                selected = false,
+                onClick = onAddPage,
+            )
+        }
+    }
+}
 
 @Composable
 private fun ToolButton(

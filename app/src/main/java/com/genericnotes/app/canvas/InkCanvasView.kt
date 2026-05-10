@@ -27,6 +27,12 @@ internal class InkCanvasView(context: Context) : View(context) {
             if (value != DrawingTool.Eraser) hideEraserPreview()
         }
     var ignoreTouchInput: Boolean = false
+    var pageLayout: NotePageLayout = NotePageLayout()
+        set(value) {
+            if (field == value) return
+            field = value
+            invalidate()
+        }
     var onCanUndoChanged: ((Boolean) -> Unit)? = null
         set(value) {
             field = value
@@ -76,6 +82,11 @@ internal class InkCanvasView(context: Context) : View(context) {
         strokeWidth = 2f
         style = Paint.Style.STROKE
     }
+    private val pageDividerPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = android.graphics.Color.rgb(205, 205, 205)
+        strokeWidth = 2f
+        style = Paint.Style.STROKE
+    }
     private val eraserXfermode = PorterDuffXfermode(PorterDuff.Mode.CLEAR)
     private var activeStroke: InkStroke? = null
     private var activePointerId: Int? = null
@@ -96,7 +107,6 @@ internal class InkCanvasView(context: Context) : View(context) {
     private var transformFocusCanvasY = 0f
 
     init {
-        setBackgroundColor(android.graphics.Color.WHITE)
         isFocusable = true
     }
 
@@ -118,6 +128,7 @@ internal class InkCanvasView(context: Context) : View(context) {
         canvas.scale(zoomScale, zoomScale)
         canvas.drawRect(0f, 0f, width.toFloat(), height.toFloat(), canvasBackgroundPaint)
         inkBitmap?.let { bitmap -> canvas.drawBitmap(bitmap, 0f, 0f, null) }
+        drawPageDividers(canvas)
         if (isEraserPreviewVisible) {
             canvas.drawCircle(eraserPreviewX, eraserPreviewY, EraserStrokeWidth / 2f, eraserPreviewPaint)
         }
@@ -147,7 +158,10 @@ internal class InkCanvasView(context: Context) : View(context) {
             return true
         }
 
-        if (isLocked) return true
+        if (isLocked) {
+            hideEraserPreview()
+            return false
+        }
 
         when (event.actionMasked) {
             MotionEvent.ACTION_DOWN -> {
@@ -199,6 +213,32 @@ internal class InkCanvasView(context: Context) : View(context) {
         }
 
         return true
+    }
+
+    private fun drawPageDividers(canvas: Canvas) {
+        if (pageLayout.displayMode != PageDisplayMode.Split) return
+
+        val pageCount = pageLayout.normalizedPageCount
+        val direction = pageLayout.scrollDirection ?: return
+        if (pageCount <= 1) return
+
+        when (direction) {
+            PageScrollDirection.Vertical -> {
+                val pageHeight = height.toFloat() / pageCount
+                for (pageIndex in 1 until pageCount) {
+                    val y = pageHeight * pageIndex
+                    canvas.drawLine(0f, y, width.toFloat(), y, pageDividerPaint)
+                }
+            }
+
+            PageScrollDirection.Horizontal -> {
+                val pageWidth = width.toFloat() / pageCount
+                for (pageIndex in 1 until pageCount) {
+                    val x = pageWidth * pageIndex
+                    canvas.drawLine(x, 0f, x, height.toFloat(), pageDividerPaint)
+                }
+            }
+        }
     }
 
     fun loadStrokes(documentStrokes: List<InkStroke>) {

@@ -3,6 +3,9 @@ package com.genericnotes.app.hwdn
 import com.genericnotes.app.canvas.DrawingTool
 import com.genericnotes.app.canvas.EraserStrokeWidth
 import com.genericnotes.app.canvas.InkStroke
+import com.genericnotes.app.canvas.NotePageLayout
+import com.genericnotes.app.canvas.PageDisplayMode
+import com.genericnotes.app.canvas.PageScrollDirection
 import com.genericnotes.app.canvas.PenNominalStrokeWidth
 import com.genericnotes.app.canvas.serializedName
 import java.io.ByteArrayOutputStream
@@ -18,6 +21,7 @@ internal fun exportHwdnPackage(
     fileName: String,
     canvasWidth: Int,
     canvasHeight: Int,
+    pageLayout: NotePageLayout = NotePageLayout(),
 ): ByteArray {
     val exportedAt = Instant.now()
     val packageId = "note-${UUID.randomUUID()}"
@@ -32,11 +36,13 @@ internal fun exportHwdnPackage(
         timestamp = exportedAt,
         canvasWidth = canvasWidth.coerceAtLeast(1),
         canvasHeight = canvasHeight.coerceAtLeast(1),
+        pageLayout = pageLayout,
     )
     val manifestJson = createManifestJson(
         packageId = packageId,
         fileName = fileName,
         timestamp = exportedAt,
+        includePageLayout = pageLayout.shouldSerialize(),
     )
 
     return ByteArrayOutputStream().use { byteOutput ->
@@ -50,7 +56,12 @@ internal fun exportHwdnPackage(
     }
 }
 
-private fun createManifestJson(packageId: String, fileName: String, timestamp: Instant): JSONObject =
+private fun createManifestJson(
+    packageId: String,
+    fileName: String,
+    timestamp: Instant,
+    includePageLayout: Boolean,
+): JSONObject =
     JSONObject()
         .put("format", "hwdn")
         .put("formatVersion", HwdnFormatVersion)
@@ -67,13 +78,22 @@ private fun createManifestJson(packageId: String, fileName: String, timestamp: I
         .put("payload", "note.json")
         .put(
             "features",
-            JSONArray()
-                .put(
+            JSONArray().apply {
+                put(
                     JSONObject()
                         .put("name", "canvas-strokes")
                         .put("required", true)
                         .put("version", HwdnFormatVersion),
-                ),
+                )
+                if (includePageLayout) {
+                    put(
+                        JSONObject()
+                            .put("name", "generic-notes-page-layout")
+                            .put("required", false)
+                            .put("version", "1"),
+                    )
+                }
+            },
         )
 
 private fun createNoteJson(
@@ -84,10 +104,36 @@ private fun createNoteJson(
     timestamp: Instant,
     canvasWidth: Int,
     canvasHeight: Int,
+    pageLayout: NotePageLayout,
 ): JSONObject {
     val canvasSize = JSONObject()
         .put("width", canvasWidth)
         .put("height", canvasHeight)
+
+    val canvasJson = JSONObject()
+        .put("id", canvasId)
+        .put("size", canvasSize)
+        .put(
+            "background",
+            JSONObject()
+                .put("color", "#ffffff")
+                .put("style", "blank"),
+        )
+        .put(
+            "strokes",
+            JSONArray().apply {
+                strokes.forEachIndexed { index, stroke ->
+                    put(stroke.toJson(index + 1))
+                }
+            },
+        )
+
+    if (pageLayout.shouldSerialize()) {
+        canvasJson.put(
+            "genericNotesPageLayout",
+            pageLayout.toJson(canvasWidth = canvasWidth, canvasHeight = canvasHeight),
+        )
+    }
 
     return JSONObject()
         .put(
@@ -106,26 +152,42 @@ private fun createNoteJson(
                         .put("version", SourceApplicationVersion),
                 ),
         )
+        .put("canvas", canvasJson)
+}
+
+private fun NotePageLayout.shouldSerialize(): Boolean =
+    normalizedPageCount > 1 ||
+        scrollDirection != null ||
+        displayMode != PageDisplayMode.Seamless ||
+        pageWidthPx != null ||
+        pageHeightPx != null
+
+private fun NotePageLayout.toJson(canvasWidth: Int, canvasHeight: Int): JSONObject {
+    val pageCount = normalizedPageCount
+    val resolvedPageWidth = when (scrollDirection) {
+        PageScrollDirection.Horizontal -> canvasWidth / pageCount
+        PageScrollDirection.Vertical,
+        null -> canvasWidth
+    }.coerceAtLeast(1)
+    val resolvedPageHeight = when (scrollDirection) {
+        PageScrollDirection.Vertical -> canvasHeight / pageCount
+        PageScrollDirection.Horizontal,
+        null -> canvasHeight
+    }.coerceAtLeast(1)
+
+    return JSONObject()
+        .put("version", 1)
+        .put("pageCount", pageCount)
+        .put("displayMode", displayMode.serializedName)
         .put(
-            "canvas",
+            "pageSize",
             JSONObject()
-                .put("id", canvasId)
-                .put("size", canvasSize)
-                .put(
-                    "background",
-                    JSONObject()
-                        .put("color", "#ffffff")
-                        .put("style", "blank"),
-                )
-                .put(
-                    "strokes",
-                    JSONArray().apply {
-                        strokes.forEachIndexed { index, stroke ->
-                            put(stroke.toJson(index + 1))
-                        }
-                    },
-                ),
+                .put("width", pageWidthPx?.coerceAtLeast(1) ?: resolvedPageWidth)
+                .put("height", pageHeightPx?.coerceAtLeast(1) ?: resolvedPageHeight),
         )
+        .apply {
+            scrollDirection?.let { put("scrollDirection", it.serializedName) }
+        }
 }
 
 private fun InkStroke.toJson(strokeNumber: Int): JSONObject =
