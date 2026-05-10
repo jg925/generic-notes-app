@@ -8,11 +8,12 @@ internal enum class AppAestheticColor(
     val label: String,
     val color: Color,
 ) {
-    Ink("ink", "Ink", Color(0xFF111111)),
+    // TODO: decide if I want to keep the label text. Pick the colors I actually want on the palette.
+    Ink("black", "Black", Color(0xFF111111)),
     Red("red", "Red", Color(0xFFB42318)),
     Blue("blue", "Blue", Color(0xFF1D4ED8)),
     Green("green", "Green", Color(0xFF166534)),
-    Purple("purple", "Purple", Color(0xFF6D28D9)),
+    Purple("violet", "Violet", Color(0xFF6D28D9)),
 }
 
 internal fun Context.loadAppAestheticColor(): AppAestheticColor {
