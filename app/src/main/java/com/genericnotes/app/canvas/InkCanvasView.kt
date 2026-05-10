@@ -10,8 +10,10 @@ import android.graphics.RectF
 import android.view.MotionEvent
 import android.view.View
 import java.time.Instant
+import kotlin.math.abs
 import kotlin.math.max
 import kotlin.math.min
+import kotlin.math.sqrt
 
 internal class InkCanvasView(context: Context) : View(context) {
     var isLocked: Boolean = false
@@ -30,9 +32,18 @@ internal class InkCanvasView(context: Context) : View(context) {
             field = value
             value?.invoke(canUndo)
         }
+    var onCanResetZoomChanged: ((Boolean) -> Unit)? = null
+        set(value) {
+            field = value
+            value?.invoke(canResetZoom)
+        }
 
     val canUndo: Boolean
         get() = strokes.isNotEmpty()
+    val canResetZoom: Boolean
+        get() = abs(zoomScale - FullScreenZoomScale) > ZoomStateEpsilon ||
+            abs(canvasOffsetX) > ZoomStateEpsilon ||
+            abs(canvasOffsetY) > ZoomStateEpsilon
 
     private val strokes = mutableListOf<InkStroke>()
     private val dirtyBounds = RectF()
@@ -47,14 +58,33 @@ internal class InkCanvasView(context: Context) : View(context) {
         strokeWidth = 2f
         style = Paint.Style.STROKE
     }
+    private val canvasBackgroundPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = android.graphics.Color.WHITE
+        style = Paint.Style.FILL
+    }
+    private val canvasBorderPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = android.graphics.Color.argb(96, 17, 17, 17)
+        strokeWidth = 2f
+        style = Paint.Style.STROKE
+    }
     private val eraserXfermode = PorterDuffXfermode(PorterDuff.Mode.CLEAR)
     private var activeStroke: InkStroke? = null
     private var activePointerId: Int? = null
+    private var activePointerToolType: Int = MotionEvent.TOOL_TYPE_UNKNOWN
     private var inkBitmap: Bitmap? = null
     private var inkCanvas: Canvas? = null
     private var eraserPreviewX = 0f
     private var eraserPreviewY = 0f
     private var isEraserPreviewVisible = false
+    private var zoomScale = FullScreenZoomScale
+    private var canvasOffsetX = 0f
+    private var canvasOffsetY = 0f
+    private var isTransformingCanvas = false
+    private var suppressStrokeUntilAllPointersUp = false
+    private var transformStartSpan = 0f
+    private var transformStartScale = FullScreenZoomScale
+    private var transformFocusCanvasX = 0f
+    private var transformFocusCanvasY = 0f
 
     init {
         setBackgroundColor(android.graphics.Color.WHITE)
@@ -68,26 +98,51 @@ internal class InkCanvasView(context: Context) : View(context) {
         inkBitmap?.recycle()
         inkBitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
         inkCanvas = Canvas(inkBitmap!!)
+        resetZoomToFullScreen()
         redrawAllStrokes()
     }
 
     override fun onDraw(canvas: Canvas) {
         super.onDraw(canvas)
+        canvas.save()
+        canvas.translate(canvasOffsetX, canvasOffsetY)
+        canvas.scale(zoomScale, zoomScale)
+        canvas.drawRect(0f, 0f, width.toFloat(), height.toFloat(), canvasBackgroundPaint)
         inkBitmap?.let { bitmap -> canvas.drawBitmap(bitmap, 0f, 0f, null) }
         if (isEraserPreviewVisible) {
             canvas.drawCircle(eraserPreviewX, eraserPreviewY, EraserStrokeWidth / 2f, eraserPreviewPaint)
         }
+        canvas.restore()
+
+        if (canResetZoom) {
+            canvas.drawRect(
+                canvasOffsetX,
+                canvasOffsetY,
+                canvasOffsetX + (width * zoomScale),
+                canvasOffsetY + (height * zoomScale),
+                canvasBorderPaint,
+            )
+        }
     }
 
     override fun onTouchEvent(event: MotionEvent): Boolean {
+        if ((event.pointerCount >= 2 || isTransformingCanvas) && !isStylusStrokeActive()) {
+            handleCanvasTransform(event)
+            return true
+        }
+
+        if (suppressStrokeUntilAllPointersUp) {
+            if (event.actionMasked == MotionEvent.ACTION_UP || event.actionMasked == MotionEvent.ACTION_CANCEL) {
+                suppressStrokeUntilAllPointersUp = false
+            }
+            return true
+        }
+
         if (isLocked) return true
 
         when (event.actionMasked) {
-            MotionEvent.ACTION_DOWN,
-            MotionEvent.ACTION_POINTER_DOWN -> {
-                if (activeStroke == null) {
-                    startStrokeFromPointer(event, event.actionIndex)
-                }
+            MotionEvent.ACTION_DOWN -> {
+                startStrokeFromPointer(event, event.actionIndex)
             }
 
             MotionEvent.ACTION_MOVE -> {
@@ -97,8 +152,8 @@ internal class InkCanvasView(context: Context) : View(context) {
                         appendHistoricalPoints(stroke, event, pointerIndex)
                         appendPoint(
                             stroke = stroke,
-                            x = event.getX(pointerIndex),
-                            y = event.getY(pointerIndex),
+                            x = viewToCanvasX(event.getX(pointerIndex)),
+                            y = viewToCanvasY(event.getY(pointerIndex)),
                             pressure = event.getPressure(pointerIndex),
                             eventTimeMillis = event.eventTime,
                         )
@@ -117,8 +172,8 @@ internal class InkCanvasView(context: Context) : View(context) {
                     activeStroke?.let { stroke ->
                         appendPoint(
                             stroke = stroke,
-                            x = event.getX(pointerIndex),
-                            y = event.getY(pointerIndex),
+                            x = viewToCanvasX(event.getX(pointerIndex)),
+                            y = viewToCanvasY(event.getY(pointerIndex)),
                             pressure = event.getPressure(pointerIndex),
                             eventTimeMillis = event.eventTime,
                         )
@@ -126,6 +181,7 @@ internal class InkCanvasView(context: Context) : View(context) {
                 }
                 if (isEndingActivePointer) {
                     activePointerId = null
+                    activePointerToolType = MotionEvent.TOOL_TYPE_UNKNOWN
                     activeStroke = null
                     hideEraserPreview()
                     parent?.requestDisallowInterceptTouchEvent(false)
@@ -139,6 +195,7 @@ internal class InkCanvasView(context: Context) : View(context) {
     fun loadStrokes(documentStrokes: List<InkStroke>) {
         activeStroke = null
         hideEraserPreview()
+        resetZoomToFullScreen()
         strokes.clear()
         strokes.addAll(documentStrokes)
         redrawAllStrokes()
@@ -147,6 +204,16 @@ internal class InkCanvasView(context: Context) : View(context) {
 
     fun strokesSnapshot(): List<InkStroke> = strokes.toList()
 
+    fun resetZoomToFullScreen() {
+        isTransformingCanvas = false
+        suppressStrokeUntilAllPointersUp = false
+        setCanvasTransform(
+            scale = FullScreenZoomScale,
+            offsetX = 0f,
+            offsetY = 0f,
+        )
+    }
+
     fun undoLastStroke(): Boolean {
         if (strokes.isEmpty()) return false
 
@@ -154,6 +221,7 @@ internal class InkCanvasView(context: Context) : View(context) {
         if (activeStroke === removedStroke) {
             activeStroke = null
             activePointerId = null
+            activePointerToolType = MotionEvent.TOOL_TYPE_UNKNOWN
             parent?.requestDisallowInterceptTouchEvent(false)
         }
         hideEraserPreview()
@@ -164,9 +232,13 @@ internal class InkCanvasView(context: Context) : View(context) {
 
     private fun startStrokeFromPointer(event: MotionEvent, pointerIndex: Int) {
         if (!acceptsInputFrom(event, pointerIndex)) return
+        val canvasX = viewToCanvasX(event.getX(pointerIndex))
+        val canvasY = viewToCanvasY(event.getY(pointerIndex))
+        if (!isPointInsideCanvas(canvasX, canvasY)) return
 
         parent?.requestDisallowInterceptTouchEvent(true)
         activePointerId = event.getPointerId(pointerIndex)
+        activePointerToolType = event.getToolType(pointerIndex)
         activeStroke = InkStroke(
             tool = selectedTool,
             startedAt = Instant.now(),
@@ -177,8 +249,8 @@ internal class InkCanvasView(context: Context) : View(context) {
             appendHistoricalPoints(stroke, event, pointerIndex)
             appendPoint(
                 stroke = stroke,
-                x = event.getX(pointerIndex),
-                y = event.getY(pointerIndex),
+                x = canvasX,
+                y = canvasY,
                 pressure = event.getPressure(pointerIndex),
                 eventTimeMillis = event.eventTime,
             )
@@ -208,8 +280,8 @@ internal class InkCanvasView(context: Context) : View(context) {
         for (index in 0 until event.historySize) {
             appendPoint(
                 stroke = stroke,
-                x = event.getHistoricalX(pointerIndex, index),
-                y = event.getHistoricalY(pointerIndex, index),
+                x = viewToCanvasX(event.getHistoricalX(pointerIndex, index)),
+                y = viewToCanvasY(event.getHistoricalY(pointerIndex, index)),
                 pressure = event.getHistoricalPressure(pointerIndex, index),
                 eventTimeMillis = event.getHistoricalEventTime(index),
             )
@@ -223,6 +295,11 @@ internal class InkCanvasView(context: Context) : View(context) {
         pressure: Float,
         eventTimeMillis: Long,
     ) {
+        if (!isPointInsideCanvas(x, y)) {
+            if (stroke.tool == DrawingTool.Eraser) hideEraserPreview()
+            return
+        }
+
         val previousIndex = stroke.lastIndex
         val coercedPressure = pressure.coerceIn(0.05f, 1.5f)
         stroke.addPoint(x, y, coercedPressure, eventTimeMillis)
@@ -293,11 +370,21 @@ internal class InkCanvasView(context: Context) : View(context) {
 
     private fun invalidateDirty(left: Float, top: Float, right: Float, bottom: Float, padding: Float) {
         dirtyBounds.set(left - padding, top - padding, right + padding, bottom + padding)
+        val viewLeft = canvasOffsetX + (dirtyBounds.left * zoomScale)
+        val viewTop = canvasOffsetY + (dirtyBounds.top * zoomScale)
+        val viewRight = canvasOffsetX + (dirtyBounds.right * zoomScale)
+        val viewBottom = canvasOffsetY + (dirtyBounds.bottom * zoomScale)
+        val invalidLeft = min(viewLeft, viewRight).toInt().coerceAtLeast(0)
+        val invalidTop = min(viewTop, viewBottom).toInt().coerceAtLeast(0)
+        val invalidRight = max(viewLeft, viewRight).toInt().coerceAtMost(width) + 1
+        val invalidBottom = max(viewTop, viewBottom).toInt().coerceAtMost(height) + 1
+        if (invalidLeft >= invalidRight || invalidTop >= invalidBottom) return
+
         postInvalidateOnAnimation(
-            dirtyBounds.left.toInt().coerceAtLeast(0),
-            dirtyBounds.top.toInt().coerceAtLeast(0),
-            dirtyBounds.right.toInt().coerceAtMost(width) + 1,
-            dirtyBounds.bottom.toInt().coerceAtMost(height) + 1,
+            invalidLeft,
+            invalidTop,
+            invalidRight,
+            invalidBottom,
         )
     }
 
@@ -378,4 +465,158 @@ internal class InkCanvasView(context: Context) : View(context) {
             padding = eraserPreviewPaint.strokeWidth + 2f,
         )
     }
+
+    private fun handleCanvasTransform(event: MotionEvent) {
+        when (event.actionMasked) {
+            MotionEvent.ACTION_POINTER_DOWN -> startCanvasTransform(event)
+            MotionEvent.ACTION_MOVE -> {
+                if (!isTransformingCanvas) startCanvasTransform(event)
+                updateCanvasTransform(event)
+            }
+
+            MotionEvent.ACTION_POINTER_UP -> {
+                if (event.pointerCount - 1 >= 2) {
+                    startCanvasTransform(event, excludedPointerIndex = event.actionIndex)
+                } else {
+                    endCanvasTransform(suppressStroke = true)
+                }
+            }
+
+            MotionEvent.ACTION_UP,
+            MotionEvent.ACTION_CANCEL -> endCanvasTransform(suppressStroke = false)
+        }
+    }
+
+    private fun startCanvasTransform(event: MotionEvent, excludedPointerIndex: Int? = null) {
+        val pointerIndices = firstTwoPointerIndices(event, excludedPointerIndex) ?: return
+        cancelActiveStroke(removeStroke = true)
+        hideEraserPreview()
+        parent?.requestDisallowInterceptTouchEvent(true)
+        isTransformingCanvas = true
+        suppressStrokeUntilAllPointersUp = false
+        transformStartSpan = pointerDistance(event, pointerIndices.first, pointerIndices.second)
+            .coerceAtLeast(MinTransformSpan)
+        transformStartScale = zoomScale
+        val focusX = pointerFocusX(event, pointerIndices.first, pointerIndices.second)
+        val focusY = pointerFocusY(event, pointerIndices.first, pointerIndices.second)
+        transformFocusCanvasX = viewToCanvasX(focusX)
+        transformFocusCanvasY = viewToCanvasY(focusY)
+    }
+
+    private fun updateCanvasTransform(event: MotionEvent) {
+        val pointerIndices = firstTwoPointerIndices(event) ?: return
+        val span = pointerDistance(event, pointerIndices.first, pointerIndices.second)
+            .coerceAtLeast(MinTransformSpan)
+        val focusX = pointerFocusX(event, pointerIndices.first, pointerIndices.second)
+        val focusY = pointerFocusY(event, pointerIndices.first, pointerIndices.second)
+        val nextScale = (transformStartScale * (span / transformStartSpan))
+            .coerceIn(MinCanvasZoomScale, MaxCanvasZoomScale)
+
+        setCanvasTransform(
+            scale = nextScale,
+            offsetX = focusX - (transformFocusCanvasX * nextScale),
+            offsetY = focusY - (transformFocusCanvasY * nextScale),
+        )
+    }
+
+    private fun endCanvasTransform(suppressStroke: Boolean) {
+        isTransformingCanvas = false
+        suppressStrokeUntilAllPointersUp = suppressStroke
+        parent?.requestDisallowInterceptTouchEvent(false)
+    }
+
+    private fun cancelActiveStroke(removeStroke: Boolean) {
+        val stroke = activeStroke
+        activeStroke = null
+        activePointerId = null
+        activePointerToolType = MotionEvent.TOOL_TYPE_UNKNOWN
+        if (removeStroke && stroke != null) {
+            strokes.remove(stroke)
+            redrawAllStrokes()
+            notifyCanUndoChanged()
+        }
+    }
+
+    private fun firstTwoPointerIndices(event: MotionEvent, excludedPointerIndex: Int? = null): Pair<Int, Int>? {
+        var firstIndex: Int? = null
+        var secondIndex: Int? = null
+        for (index in 0 until event.pointerCount) {
+            if (index == excludedPointerIndex) continue
+            if (firstIndex == null) {
+                firstIndex = index
+            } else {
+                secondIndex = index
+                break
+            }
+        }
+
+        val first = firstIndex ?: return null
+        val second = secondIndex ?: return null
+        return first to second
+    }
+
+    private fun pointerDistance(event: MotionEvent, firstIndex: Int, secondIndex: Int): Float {
+        val dx = event.getX(secondIndex) - event.getX(firstIndex)
+        val dy = event.getY(secondIndex) - event.getY(firstIndex)
+        return sqrt((dx * dx) + (dy * dy))
+    }
+
+    private fun pointerFocusX(event: MotionEvent, firstIndex: Int, secondIndex: Int): Float =
+        (event.getX(firstIndex) + event.getX(secondIndex)) / 2f
+
+    private fun pointerFocusY(event: MotionEvent, firstIndex: Int, secondIndex: Int): Float =
+        (event.getY(firstIndex) + event.getY(secondIndex)) / 2f
+
+    private fun setCanvasTransform(scale: Float, offsetX: Float, offsetY: Float) {
+        val couldResetZoom = canResetZoom
+        zoomScale = scale.coerceIn(MinCanvasZoomScale, MaxCanvasZoomScale)
+        canvasOffsetX = offsetX
+        canvasOffsetY = offsetY
+        clampCanvasOffset()
+        if (couldResetZoom != canResetZoom) notifyCanResetZoomChanged()
+        invalidate()
+    }
+
+    private fun clampCanvasOffset() {
+        if (width <= 0 || height <= 0) return
+
+        val scaledWidth = width * zoomScale
+        val scaledHeight = height * zoomScale
+        canvasOffsetX = if (scaledWidth <= width) {
+            (width - scaledWidth) / 2f
+        } else {
+            canvasOffsetX.coerceIn(width - scaledWidth, 0f)
+        }
+        canvasOffsetY = if (scaledHeight <= height) {
+            (height - scaledHeight) / 2f
+        } else {
+            canvasOffsetY.coerceIn(height - scaledHeight, 0f)
+        }
+    }
+
+    private fun notifyCanResetZoomChanged() {
+        onCanResetZoomChanged?.invoke(canResetZoom)
+    }
+
+    private fun viewToCanvasX(x: Float): Float =
+        (x - canvasOffsetX) / zoomScale
+
+    private fun viewToCanvasY(y: Float): Float =
+        (y - canvasOffsetY) / zoomScale
+
+    private fun isPointInsideCanvas(x: Float, y: Float): Boolean =
+        x in 0f..width.toFloat() && y in 0f..height.toFloat()
+
+    private fun isStylusStrokeActive(): Boolean =
+        activeStroke != null &&
+            (
+                activePointerToolType == MotionEvent.TOOL_TYPE_STYLUS ||
+                    activePointerToolType == MotionEvent.TOOL_TYPE_ERASER
+                )
 }
+
+private const val FullScreenZoomScale = 1f
+private const val MinCanvasZoomScale = 0.5f
+private const val MaxCanvasZoomScale = 4f
+private const val MinTransformSpan = 16f
+private const val ZoomStateEpsilon = 0.001f

@@ -131,6 +131,46 @@ internal val HandIcon: ImageVector =
         }
     }.build()
 
+internal val FitScreenIcon: ImageVector =
+    ImageVector.Builder(
+        name = "FitScreen",
+        defaultWidth = 24.dp,
+        defaultHeight = 24.dp,
+        viewportWidth = 24f,
+        viewportHeight = 24f,
+    ).apply {
+        path(fill = SolidColor(Color.Black)) {
+            moveTo(4.0f, 4.0f)
+            lineTo(10.0f, 4.0f)
+            lineTo(10.0f, 6.2f)
+            lineTo(6.2f, 6.2f)
+            lineTo(6.2f, 10.0f)
+            lineTo(4.0f, 10.0f)
+            close()
+            moveTo(14.0f, 4.0f)
+            lineTo(20.0f, 4.0f)
+            lineTo(20.0f, 10.0f)
+            lineTo(17.8f, 10.0f)
+            lineTo(17.8f, 6.2f)
+            lineTo(14.0f, 6.2f)
+            close()
+            moveTo(4.0f, 14.0f)
+            lineTo(6.2f, 14.0f)
+            lineTo(6.2f, 17.8f)
+            lineTo(10.0f, 17.8f)
+            lineTo(10.0f, 20.0f)
+            lineTo(4.0f, 20.0f)
+            close()
+            moveTo(17.8f, 14.0f)
+            lineTo(20.0f, 14.0f)
+            lineTo(20.0f, 20.0f)
+            lineTo(14.0f, 20.0f)
+            lineTo(14.0f, 17.8f)
+            lineTo(17.8f, 17.8f)
+            close()
+        }
+    }.build()
+
 internal val SaveIcon: ImageVector =
     ImageVector.Builder(
         name = "Save",

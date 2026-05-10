@@ -66,6 +66,7 @@ internal fun NotesCanvasScreen(
         mutableStateOf(initialDocument?.fileName?.withoutHwdnExtension()?.take(MaxFileNameLength) ?: "")
     }
     var canUndo by remember(initialDocument) { mutableStateOf(initialDocument?.strokes?.isNotEmpty() == true) }
+    var canResetZoom by remember(initialDocument) { mutableStateOf(false) }
     var inkCanvasView by remember { mutableStateOf<InkCanvasView?>(null) }
     var pendingDocumentBytes by remember { mutableStateOf<ByteArray?>(null) }
     var pendingFileName by remember { mutableStateOf<String?>(null) }
@@ -111,6 +112,7 @@ internal fun NotesCanvasScreen(
             factory = { viewContext ->
                 InkCanvasView(viewContext).also { canvasView ->
                     canvasView.onCanUndoChanged = { canUndo = it }
+                    canvasView.onCanResetZoomChanged = { canResetZoom = it }
                     initialDocument?.strokes?.let(canvasView::loadStrokes)
                     inkCanvasView = canvasView
                 }
@@ -168,6 +170,13 @@ internal fun NotesCanvasScreen(
                             canUndo = canvasView.canUndo
                         }
                     },
+                )
+                ToolButton(
+                    icon = FitScreenIcon,
+                    contentDescription = "reset zoom",
+                    selected = false,
+                    enabled = canResetZoom,
+                    onClick = { inkCanvasView?.resetZoomToFullScreen() },
                 )
                 ToolButton(
                     icon = PenIcon,
