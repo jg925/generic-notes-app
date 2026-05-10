@@ -69,14 +69,23 @@ internal fun AppInfoDialog(
                         color = Color(0xFF444444),
                         style = MaterialTheme.typography.bodyMedium,
                     )
-                    TextButton(
-                        onClick = { uriHandler.openUri(GitHubRepositoryUrl) },
-                        contentPadding = PaddingValues(horizontal = 0.dp, vertical = 4.dp),
-                        colors = ButtonDefaults.textButtonColors(
-                            contentColor = Color(0xFF111111),
-                        ),
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
                     ) {
-                        Text("GitHub repository")
+                        Text(
+                            text = "Visit Repo: ",
+                            color = Color(0xFF444444),
+                            style = MaterialTheme.typography.bodyMedium,
+                        )
+                        TextButton(
+                            onClick = { uriHandler.openUri(GitHubRepositoryUrl) },
+                            contentPadding = PaddingValues(horizontal = 0.dp, vertical = 4.dp),
+                            colors = ButtonDefaults.textButtonColors(
+                                contentColor = Color(0xFF111111),
+                            ),
+                        ) {
+                            Text("generic-notes-app")
+                        }
                     }
 
                     NoticeSection(
