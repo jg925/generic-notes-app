@@ -22,6 +22,10 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -38,6 +42,8 @@ internal fun OpenOrCreateScreen(
     onOpenSettings: () -> Unit,
     accentColor: Color,
 ) {
+    var showAppInfo by remember { mutableStateOf(false) }
+
     Box(
         modifier = Modifier
             .fillMaxSize()
@@ -68,11 +74,33 @@ internal fun OpenOrCreateScreen(
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.Center,
         ) {
-            Text(
-                text = "Start a note",
-                color = accentColor,
-                style = MaterialTheme.typography.headlineMedium,
-            )
+            Box(
+                modifier = Modifier.fillMaxWidth(),
+                contentAlignment = Alignment.Center,
+            ) {
+                Text(
+                    text = "Start a note",
+                    color = accentColor,
+                    style = MaterialTheme.typography.headlineMedium,
+                )
+                StylusHoverTooltipBox(
+                    tooltipText = "about and licenses",
+                    modifier = Modifier.align(Alignment.TopEnd),
+                ) {
+                    IconButton(
+                        onClick = { showAppInfo = true },
+                        colors = IconButtonDefaults.iconButtonColors(
+                            containerColor = Color(0xFFF4F4F4),
+                            contentColor = Color(0xFF111111),
+                        ),
+                    ) {
+                        Icon(
+                            imageVector = InfoIcon,
+                            contentDescription = "about and licenses",
+                        )
+                    }
+                }
+            }
             Spacer(modifier = Modifier.height(20.dp))
             Button(
                 onClick = onOpenExisting,
@@ -103,6 +131,10 @@ internal fun OpenOrCreateScreen(
                 )
             }
         }
+    }
+
+    if (showAppInfo) {
+        AppInfoDialog(onDismissRequest = { showAppInfo = false })
     }
 }
 
