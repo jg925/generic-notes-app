@@ -66,6 +66,9 @@ internal fun OpenOrCreateScreen(
                 onClick = onCreateNew,
                 modifier = Modifier.fillMaxWidth(),
                 shape = RoundedCornerShape(8.dp),
+                colors = ButtonDefaults.outlinedButtonColors(
+                    contentColor = Color(0xFF111111),
+                ),
             ) {
                 Text("Create new")
             }
@@ -113,6 +116,9 @@ private fun RecentFileButton(
         onClick = onClick,
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(8.dp),
+        colors = ButtonDefaults.outlinedButtonColors(
+            contentColor = Color(0xFF111111),
+        ),
         contentPadding = PaddingValues(horizontal = 14.dp, vertical = 10.dp),
     ) {
         Column(
