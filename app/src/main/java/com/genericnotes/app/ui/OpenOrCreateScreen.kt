@@ -10,10 +10,14 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
@@ -31,6 +35,8 @@ internal fun OpenOrCreateScreen(
     onCreateNew: () -> Unit,
     recentFiles: List<RecentHwdnFile>,
     onOpenRecent: (RecentHwdnFile) -> Unit,
+    onOpenSettings: () -> Unit,
+    accentColor: Color,
 ) {
     Box(
         modifier = Modifier
@@ -39,6 +45,24 @@ internal fun OpenOrCreateScreen(
             .padding(24.dp),
         contentAlignment = Alignment.Center,
     ) {
+        StylusHoverTooltipBox(
+            tooltipText = "settings",
+            containerColor = accentColor,
+            modifier = Modifier.align(Alignment.TopEnd),
+        ) {
+            IconButton(
+                onClick = onOpenSettings,
+                modifier = Modifier.size(44.dp),
+                colors = IconButtonDefaults.iconButtonColors(contentColor = accentColor),
+            ) {
+                Icon(
+                    imageVector = SettingsIcon,
+                    contentDescription = "settings",
+                    modifier = Modifier.size(22.dp),
+                )
+            }
+        }
+
         Column(
             modifier = Modifier.widthIn(max = 360.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
@@ -46,7 +70,7 @@ internal fun OpenOrCreateScreen(
         ) {
             Text(
                 text = "Start a note",
-                color = Color(0xFF111111),
+                color = accentColor,
                 style = MaterialTheme.typography.headlineMedium,
             )
             Spacer(modifier = Modifier.height(20.dp))
@@ -55,7 +79,7 @@ internal fun OpenOrCreateScreen(
                 modifier = Modifier.fillMaxWidth(),
                 shape = RoundedCornerShape(8.dp),
                 colors = ButtonDefaults.buttonColors(
-                    containerColor = Color(0xFF111111),
+                    containerColor = accentColor,
                     contentColor = Color.White,
                 ),
             ) {
@@ -66,9 +90,7 @@ internal fun OpenOrCreateScreen(
                 onClick = onCreateNew,
                 modifier = Modifier.fillMaxWidth(),
                 shape = RoundedCornerShape(8.dp),
-                colors = ButtonDefaults.outlinedButtonColors(
-                    contentColor = Color(0xFF111111),
-                ),
+                colors = ButtonDefaults.outlinedButtonColors(contentColor = accentColor),
             ) {
                 Text("Create new")
             }
@@ -77,6 +99,7 @@ internal fun OpenOrCreateScreen(
                 RecentFilesSection(
                     recentFiles = recentFiles,
                     onOpenRecent = onOpenRecent,
+                    accentColor = accentColor,
                 )
             }
         }
@@ -87,6 +110,7 @@ internal fun OpenOrCreateScreen(
 private fun RecentFilesSection(
     recentFiles: List<RecentHwdnFile>,
     onOpenRecent: (RecentHwdnFile) -> Unit,
+    accentColor: Color,
 ) {
     Column(
         modifier = Modifier.fillMaxWidth(),
@@ -102,6 +126,7 @@ private fun RecentFilesSection(
             RecentFileButton(
                 recentFile = recentFile,
                 onClick = { onOpenRecent(recentFile) },
+                accentColor = accentColor,
             )
         }
     }
@@ -111,14 +136,13 @@ private fun RecentFilesSection(
 private fun RecentFileButton(
     recentFile: RecentHwdnFile,
     onClick: () -> Unit,
+    accentColor: Color,
 ) {
     OutlinedButton(
         onClick = onClick,
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(8.dp),
-        colors = ButtonDefaults.outlinedButtonColors(
-            contentColor = Color(0xFF111111),
-        ),
+        colors = ButtonDefaults.outlinedButtonColors(contentColor = accentColor),
         contentPadding = PaddingValues(horizontal = 14.dp, vertical = 10.dp),
     ) {
         Column(
@@ -127,7 +151,7 @@ private fun RecentFileButton(
         ) {
             Text(
                 text = recentFile.displayName,
-                color = Color(0xFF111111),
+                color = accentColor,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
                 style = MaterialTheme.typography.bodyMedium,

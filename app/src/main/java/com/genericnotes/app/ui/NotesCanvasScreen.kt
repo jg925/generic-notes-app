@@ -53,6 +53,7 @@ import com.genericnotes.app.settings.saveAppCanvasSettings
 @Composable
 internal fun NotesCanvasScreen(
     initialDocument: HwdnDocument?,
+    accentColor: Color,
     onDocumentSaved: (Uri, String) -> Unit,
 ) {
     val context = LocalContext.current
@@ -130,6 +131,7 @@ internal fun NotesCanvasScreen(
         FilePanel(
             fileName = fileName,
             onFileNameChange = { fileName = it.withoutHwdnExtension().take(MaxFileNameLength) },
+            accentColor = accentColor,
             onSave = {
                 val hwdnFileName = fileName.toHwdnFileName()
                 val canvasView = inkCanvasView ?: return@FilePanel
@@ -152,7 +154,7 @@ internal fun NotesCanvasScreen(
                 .align(Alignment.TopCenter)
                 .padding(top = 24.dp),
             color = Color(0xFFF4F4F4),
-            contentColor = Color(0xFF111111),
+            contentColor = accentColor,
             shape = RoundedCornerShape(8.dp),
             tonalElevation = 2.dp,
             shadowElevation = 2.dp,
@@ -166,6 +168,7 @@ internal fun NotesCanvasScreen(
                     contentDescription = "undo",
                     selected = false,
                     enabled = canUndo,
+                    accentColor = accentColor,
                     onClick = {
                         inkCanvasView?.let { canvasView ->
                             canvasView.undoLastStroke()
@@ -178,6 +181,7 @@ internal fun NotesCanvasScreen(
                     contentDescription = "redo",
                     selected = false,
                     enabled = canRedo,
+                    accentColor = accentColor,
                     onClick = {
                         inkCanvasView?.let { canvasView ->
                             canvasView.redoLastStroke()
@@ -190,18 +194,21 @@ internal fun NotesCanvasScreen(
                     contentDescription = "reset zoom",
                     selected = false,
                     enabled = canResetZoom,
+                    accentColor = accentColor,
                     onClick = { inkCanvasView?.resetZoomToFullScreen() },
                 )
                 ToolButton(
                     icon = PenIcon,
                     contentDescription = "pen",
                     selected = selectedTool == DrawingTool.Pen,
+                    accentColor = accentColor,
                     onClick = { selectedTool = DrawingTool.Pen },
                 )
                 ToolButton(
                     icon = EraserIcon,
                     contentDescription = "eraser",
                     selected = selectedTool == DrawingTool.Eraser,
+                    accentColor = accentColor,
                     onClick = { selectedTool = DrawingTool.Eraser },
                 )
                 if (supportsTrueStylusInput) {
@@ -209,6 +216,7 @@ internal fun NotesCanvasScreen(
                         icon = HandIcon,
                         contentDescription = "palm reject",
                         selected = ignoreTouchInput,
+                        accentColor = accentColor,
                         onClick = { ignoreTouchInput = !ignoreTouchInput },
                         struckThrough = ignoreTouchInput,
                     )
@@ -222,8 +230,8 @@ internal fun NotesCanvasScreen(
                 .align(Alignment.TopEnd)
                 .padding(24.dp),
             colors = ButtonDefaults.buttonColors(
-                containerColor = if (isLocked) Color(0xFF111111) else Color(0xFFECECEC),
-                contentColor = if (isLocked) Color.White else Color(0xFF111111),
+                containerColor = if (isLocked) accentColor else Color(0xFFECECEC),
+                contentColor = if (isLocked) Color.White else accentColor,
             ),
             shape = RoundedCornerShape(8.dp),
         ) {
@@ -276,17 +284,24 @@ private fun ToolButton(
     contentDescription: String,
     selected: Boolean,
     onClick: () -> Unit,
+    accentColor: Color,
     enabled: Boolean = true,
     struckThrough: Boolean = false,
 ) {
-    StylusHoverTooltipBox(tooltipText = contentDescription) {
+    val toolbarBackgroundColor = Color(0xFFF4F4F4)
+
+    StylusHoverTooltipBox(
+        tooltipText = contentDescription,
+        containerColor = accentColor,
+    ) {
         IconButton(
             onClick = onClick,
             enabled = enabled,
             modifier = Modifier.size(44.dp),
             colors = IconButtonDefaults.iconButtonColors(
-                containerColor = if (selected) Color(0xFF111111) else Color.Transparent,
-                contentColor = if (selected) Color.White else Color(0xFF111111),
+                containerColor = if (selected) accentColor else Color.Transparent,
+                contentColor = if (selected) Color.White else accentColor,
+                disabledContentColor = accentColor.copy(alpha = 0.38f),
             ),
         ) {
             Box(
@@ -301,7 +316,7 @@ private fun ToolButton(
                 if (struckThrough) {
                     Canvas(modifier = Modifier.fillMaxSize()) {
                         drawLine(
-                            color = if (selected) Color(0xFF111111) else Color(0xFFF4F4F4),
+                            color = if (selected) accentColor else toolbarBackgroundColor,
                             start = Offset(size.width * 0.18f, size.height * 0.82f),
                             end = Offset(size.width * 0.82f, size.height * 0.18f),
                             strokeWidth = 3.dp.toPx(),

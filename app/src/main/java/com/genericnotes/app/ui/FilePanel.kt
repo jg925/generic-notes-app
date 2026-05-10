@@ -25,13 +25,14 @@ import com.genericnotes.app.hwdn.HwdnExtension
 internal fun FilePanel(
     fileName: String,
     onFileNameChange: (String) -> Unit,
+    accentColor: Color,
     onSave: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     Surface(
         modifier = modifier,
         color = Color(0xFFF4F4F4),
-        contentColor = Color(0xFF111111),
+        contentColor = accentColor,
         shape = RoundedCornerShape(8.dp),
         tonalElevation = 2.dp,
         shadowElevation = 2.dp,
@@ -44,8 +45,8 @@ internal fun FilePanel(
                 value = fileName,
                 onValueChange = onFileNameChange,
                 singleLine = true,
-                textStyle = MaterialTheme.typography.bodyMedium.copy(color = Color(0xFF111111)),
-                cursorBrush = SolidColor(Color(0xFF111111)),
+                textStyle = MaterialTheme.typography.bodyMedium.copy(color = accentColor),
+                cursorBrush = SolidColor(accentColor),
                 modifier = Modifier.width(156.dp),
                 decorationBox = { innerTextField ->
                     Box {
@@ -65,13 +66,16 @@ internal fun FilePanel(
                 color = Color(0xFF555555),
                 style = MaterialTheme.typography.bodyMedium,
             )
-            StylusHoverTooltipBox(tooltipText = "save") {
+            StylusHoverTooltipBox(
+                tooltipText = "save",
+                containerColor = accentColor,
+            ) {
                 IconButton(
                     onClick = onSave,
                     modifier = Modifier.size(44.dp),
                     colors = IconButtonDefaults.iconButtonColors(
                         containerColor = Color.Transparent,
-                        contentColor = Color(0xFF111111),
+                        contentColor = accentColor,
                     ),
                 ) {
                     Icon(
