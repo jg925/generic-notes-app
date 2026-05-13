@@ -33,8 +33,8 @@ internal fun rememberDictationController(resetKey: Any?): DictationController {
     var status by remember(resetKey) { mutableStateOf(DictationStatus.Idle) }
     var errorMessage by remember(resetKey) { mutableStateOf<String?>(null) }
     var clearDraftAfterPermissionGrant by remember(resetKey) { mutableStateOf(false) }
-    val speechRecognitionAvailable = remember(context) {
-        SpeechRecognitionSession.isRecognitionAvailable(context)
+    val onDeviceSpeechRecognitionAvailable = remember(context) {
+        SpeechRecognitionSession.isOnDeviceRecognitionAvailable(context)
     }
     val speechRecognitionSession = remember(context, resetKey) {
         SpeechRecognitionSession(context)
@@ -79,9 +79,9 @@ internal fun rememberDictationController(resetKey: Any?): DictationController {
             )
         ) {
             SpeechRecognitionStartResult.Started -> Unit
-            SpeechRecognitionStartResult.Unavailable -> {
+            SpeechRecognitionStartResult.OnDeviceUnavailable -> {
                 status = DictationStatus.Unavailable
-                errorMessage = "Dictation could not start on this device."
+                errorMessage = "On-device dictation is not available on this device."
             }
             SpeechRecognitionStartResult.ListenerError -> {
                 status = DictationStatus.Error
@@ -117,9 +117,9 @@ internal fun rememberDictationController(resetKey: Any?): DictationController {
 
     fun beginDictation(clearDraft: Boolean) {
         isSheetVisible = true
-        if (!speechRecognitionAvailable) {
+        if (!onDeviceSpeechRecognitionAvailable) {
             status = DictationStatus.Unavailable
-            errorMessage = "Dictation is not available on this device."
+            errorMessage = "On-device dictation is not available on this device."
             return
         }
 

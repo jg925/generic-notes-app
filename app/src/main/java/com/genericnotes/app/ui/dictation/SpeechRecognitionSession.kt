@@ -2,7 +2,10 @@ package com.genericnotes.app.ui.dictation
 
 import android.content.Context
 import android.content.Intent
+import android.os.Build
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
 import android.speech.RecognitionListener
 import android.speech.RecognizerIntent
 import android.speech.SpeechRecognizer
@@ -11,48 +14,62 @@ import java.util.Locale
 internal class SpeechRecognitionSession(
     private val context: Context,
 ) {
+    private val mainHandler = Handler(Looper.getMainLooper())
     private var speechRecognizer: SpeechRecognizer? = null
-    private var isActive = false
+    private var activeSessionId = 0
+    private var recordingState = RecordingSessionState.Idle
+    private var lastPartialResult: String? = null
 
     fun startListening(callbacks: SpeechRecognitionCallbacks): SpeechRecognitionStartResult {
         release(cancel = true)
+        if (!isOnDeviceRecognitionAvailable(context)) {
+            return SpeechRecognitionStartResult.OnDeviceUnavailable
+        }
+
+        val sessionId = nextSessionId()
         val activeSpeechRecognizer = runCatching {
-            SpeechRecognizer.createSpeechRecognizer(context)
+            SpeechRecognizer.createOnDeviceSpeechRecognizer(context)
         }.getOrElse {
-            return SpeechRecognitionStartResult.Unavailable
+            return SpeechRecognitionStartResult.OnDeviceUnavailable
         }
 
         speechRecognizer = activeSpeechRecognizer
-        isActive = true
+        recordingState = RecordingSessionState.Starting
 
         runCatching {
             activeSpeechRecognizer.setRecognitionListener(
                 DictationRecognitionListener(
                     onReadyForSpeech = {
-                        if (isActive) {
+                        if (isCurrentSession(sessionId)) {
+                            recordingState = RecordingSessionState.Listening
                             callbacks.onReadyForSpeech()
                         }
                     },
                     onEndOfSpeech = {
-                        if (isActive) {
+                        if (isCurrentSession(sessionId)) {
+                            recordingState = RecordingSessionState.Stopping
                             callbacks.onEndOfSpeech()
                         }
                     },
                     onPartialResult = { result ->
-                        if (isActive) {
+                        if (isCurrentSession(sessionId) &&
+                            recordingState == RecordingSessionState.Listening &&
+                            result != lastPartialResult
+                        ) {
+                            lastPartialResult = result
                             callbacks.onPartialResult(result)
                         }
                     },
                     onFinalResult = { result ->
-                        if (isActive) {
+                        if (isCurrentSession(sessionId)) {
                             callbacks.onFinalResult(result)
-                            release(cancel = false)
+                            releaseAfterCallback(sessionId, cancel = false)
                         }
                     },
                     onError = { error ->
-                        if (isActive) {
+                        if (isCurrentSession(sessionId)) {
                             callbacks.onErrorMessage(dictationErrorMessageFor(error))
-                            release(cancel = false)
+                            releaseAfterCallback(sessionId, cancel = false)
                         }
                     },
                 ),
@@ -63,6 +80,7 @@ internal class SpeechRecognitionSession(
         }
 
         return runCatching {
+            recordingState = RecordingSessionState.Listening
             activeSpeechRecognizer.startListening(createDictationIntent())
             SpeechRecognitionStartResult.Started
         }.getOrElse {
@@ -73,12 +91,18 @@ internal class SpeechRecognitionSession(
 
     fun stopListening(): SpeechRecognitionStopResult {
         val recognizer = speechRecognizer
-        if (recognizer == null || !isActive) {
-            release(cancel = false)
+        if (recognizer == null) {
+            return SpeechRecognitionStopResult.NoActiveSession
+        }
+        if (recordingState == RecordingSessionState.Stopping) {
+            return SpeechRecognitionStopResult.Stopping
+        }
+        if (recordingState != RecordingSessionState.Listening) {
             return SpeechRecognitionStopResult.NoActiveSession
         }
 
         return runCatching {
+            recordingState = RecordingSessionState.Stopping
             recognizer.stopListening()
             SpeechRecognitionStopResult.Stopping
         }.getOrElse {
@@ -88,20 +112,59 @@ internal class SpeechRecognitionSession(
     }
 
     fun release(cancel: Boolean) {
+        val recognizer = detachRecognizer()
+        if (recognizer == null) return
+        destroyRecognizer(recognizer, cancel)
+    }
+
+    companion object {
+        fun isOnDeviceRecognitionAvailable(context: Context): Boolean =
+            Build.VERSION.SDK_INT >= Build.VERSION_CODES.S &&
+                SpeechRecognizer.isOnDeviceRecognitionAvailable(context)
+    }
+
+    private fun nextSessionId(): Int {
+        activeSessionId += 1
+        return activeSessionId
+    }
+
+    private fun isCurrentSession(sessionId: Int): Boolean =
+        speechRecognizer != null &&
+            activeSessionId == sessionId &&
+            recordingState != RecordingSessionState.Released
+
+    private fun releaseAfterCallback(sessionId: Int, cancel: Boolean) {
+        if (!isCurrentSession(sessionId)) return
+        val recognizer = detachRecognizer()
+        if (recognizer == null) return
+        mainHandler.post {
+            destroyRecognizer(recognizer, cancel)
+        }
+    }
+
+    private fun detachRecognizer(): SpeechRecognizer? {
         val recognizer = speechRecognizer
         speechRecognizer = null
-        isActive = false
-        if (recognizer == null) return
+        recordingState = RecordingSessionState.Released
+        lastPartialResult = null
+        activeSessionId += 1
+        return recognizer
+    }
+
+    private fun destroyRecognizer(recognizer: SpeechRecognizer, cancel: Boolean) {
         if (cancel) {
             runCatching { recognizer.cancel() }
         }
         runCatching { recognizer.destroy() }
     }
+}
 
-    companion object {
-        fun isRecognitionAvailable(context: Context): Boolean =
-            SpeechRecognizer.isRecognitionAvailable(context)
-    }
+private enum class RecordingSessionState {
+    Idle,
+    Starting,
+    Listening,
+    Stopping,
+    Released,
 }
 
 internal data class SpeechRecognitionCallbacks(
@@ -114,7 +177,7 @@ internal data class SpeechRecognitionCallbacks(
 
 internal enum class SpeechRecognitionStartResult {
     Started,
-    Unavailable,
+    OnDeviceUnavailable,
     ListenerError,
     StartError,
 }
@@ -171,6 +234,8 @@ private fun createDictationIntent(): Intent =
         putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
         putExtra(RecognizerIntent.EXTRA_LANGUAGE, Locale.getDefault().toLanguageTag())
         putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true)
+        putExtra(RecognizerIntent.EXTRA_PREFER_OFFLINE, true)
+        putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 1)
     }
 
 private fun Bundle?.firstRecognitionResult(): String? =
@@ -185,10 +250,10 @@ private fun dictationErrorMessageFor(error: Int): String =
         SpeechRecognizer.ERROR_CLIENT -> "Dictation stopped."
         SpeechRecognizer.ERROR_INSUFFICIENT_PERMISSIONS -> "Microphone permission is required for dictation."
         SpeechRecognizer.ERROR_NETWORK,
-        SpeechRecognizer.ERROR_NETWORK_TIMEOUT -> "Dictation needs a working speech service."
+        SpeechRecognizer.ERROR_NETWORK_TIMEOUT -> "On-device dictation could not process the recording."
         SpeechRecognizer.ERROR_NO_MATCH -> "No speech was recognized. Try recording again."
         SpeechRecognizer.ERROR_RECOGNIZER_BUSY -> "Dictation is already listening."
-        SpeechRecognizer.ERROR_SERVER -> "The speech service could not process the recording."
+        SpeechRecognizer.ERROR_SERVER -> "On-device dictation could not process the recording."
         SpeechRecognizer.ERROR_SPEECH_TIMEOUT -> "No speech was heard. Try recording again."
         else -> "Dictation failed. Try recording again."
     }
