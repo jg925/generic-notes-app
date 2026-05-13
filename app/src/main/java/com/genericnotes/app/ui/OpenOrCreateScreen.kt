@@ -51,24 +51,6 @@ internal fun OpenOrCreateScreen(
             .padding(24.dp),
         contentAlignment = Alignment.Center,
     ) {
-        StylusHoverTooltipBox(
-            tooltipText = "settings",
-            containerColor = accentColor,
-            modifier = Modifier.align(Alignment.TopEnd),
-        ) {
-            IconButton(
-                onClick = onOpenSettings,
-                modifier = Modifier.size(44.dp),
-                colors = IconButtonDefaults.iconButtonColors(contentColor = accentColor),
-            ) {
-                Icon(
-                    imageVector = SettingsIcon,
-                    contentDescription = "settings",
-                    modifier = Modifier.size(22.dp),
-                )
-            }
-        }
-
         Column(
             modifier = Modifier.widthIn(max = 360.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
@@ -83,6 +65,22 @@ internal fun OpenOrCreateScreen(
                     color = accentColor,
                     style = MaterialTheme.typography.headlineMedium,
                 )
+                StylusHoverTooltipBox(
+                    tooltipText = "settings",
+                    containerColor = accentColor,
+                    modifier = Modifier.align(Alignment.TopStart),
+                ) {
+                    IconButton(
+                        onClick = onOpenSettings,
+                        colors = IconButtonDefaults.iconButtonColors(contentColor = accentColor),
+                    ) {
+                        Icon(
+                            imageVector = SettingsIcon,
+                            contentDescription = "settings",
+                            modifier = Modifier.size(26.dp),
+                        )
+                    }
+                }
                 StylusHoverTooltipBox(
                     tooltipText = "about and licenses",
                     modifier = Modifier.align(Alignment.TopEnd),

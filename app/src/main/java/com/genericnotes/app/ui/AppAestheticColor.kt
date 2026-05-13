@@ -13,7 +13,7 @@ internal enum class AppAestheticColor(
     Red("red", "Red", Color(0xFFB42318)),
     Blue("blue", "Blue", Color(0xFF1D4ED8)),
     Green("green", "Green", Color(0xFF166534)),
-    Purple("violet", "Violet", Color(0xFF6D28D9)),
+    Purple("purple", "Purple", Color(0xFF6D28D9)),
 }
 
 internal fun Context.loadAppAestheticColor(): AppAestheticColor {
