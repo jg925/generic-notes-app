@@ -29,6 +29,7 @@ import androidx.compose.ui.window.Popup
 @Composable
 internal fun StylusHoverTooltipBox(
     tooltipText: String,
+    containerColor: Color = Color(0xFF111111),
     modifier: Modifier = Modifier,
     content: @Composable () -> Unit,
 ) {
@@ -68,7 +69,7 @@ internal fun StylusHoverTooltipBox(
                 offset = IntOffset(x = 0, y = tooltipYOffset),
             ) {
                 Surface(
-                    color = Color(0xFF111111),
+                    color = containerColor,
                     contentColor = Color.White,
                     shape = RoundedCornerShape(6.dp),
                     shadowElevation = 4.dp,

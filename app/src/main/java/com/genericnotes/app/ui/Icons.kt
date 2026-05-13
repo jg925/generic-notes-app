@@ -261,3 +261,88 @@ internal val InfoIcon: ImageVector =
             close()
         }
     }.build()
+
+internal val SettingsIcon: ImageVector =
+    ImageVector.Builder(
+        name = "Settings",
+        defaultWidth = 24.dp,
+        defaultHeight = 24.dp,
+        viewportWidth = 24f,
+        viewportHeight = 24f,
+    ).apply {
+        path(fill = SolidColor(Color.Black)) {
+            moveTo(4.0f, 5.0f)
+            lineTo(7.0f, 5.0f)
+            curveTo(7.42f, 3.84f, 8.52f, 3.0f, 9.82f, 3.0f)
+            curveTo(11.12f, 3.0f, 12.22f, 3.84f, 12.64f, 5.0f)
+            lineTo(20.0f, 5.0f)
+            lineTo(20.0f, 7.0f)
+            lineTo(12.64f, 7.0f)
+            curveTo(12.22f, 8.16f, 11.12f, 9.0f, 9.82f, 9.0f)
+            curveTo(8.52f, 9.0f, 7.42f, 8.16f, 7.0f, 7.0f)
+            lineTo(4.0f, 7.0f)
+            close()
+            moveTo(9.82f, 5.0f)
+            curveTo(9.27f, 5.0f, 8.82f, 5.45f, 8.82f, 6.0f)
+            curveTo(8.82f, 6.55f, 9.27f, 7.0f, 9.82f, 7.0f)
+            curveTo(10.37f, 7.0f, 10.82f, 6.55f, 10.82f, 6.0f)
+            curveTo(10.82f, 5.45f, 10.37f, 5.0f, 9.82f, 5.0f)
+            close()
+            moveTo(4.0f, 11.0f)
+            lineTo(13.36f, 11.0f)
+            curveTo(13.78f, 9.84f, 14.88f, 9.0f, 16.18f, 9.0f)
+            curveTo(17.48f, 9.0f, 18.58f, 9.84f, 19.0f, 11.0f)
+            lineTo(20.0f, 11.0f)
+            lineTo(20.0f, 13.0f)
+            lineTo(19.0f, 13.0f)
+            curveTo(18.58f, 14.16f, 17.48f, 15.0f, 16.18f, 15.0f)
+            curveTo(14.88f, 15.0f, 13.78f, 14.16f, 13.36f, 13.0f)
+            lineTo(4.0f, 13.0f)
+            close()
+            moveTo(16.18f, 11.0f)
+            curveTo(15.63f, 11.0f, 15.18f, 11.45f, 15.18f, 12.0f)
+            curveTo(15.18f, 12.55f, 15.63f, 13.0f, 16.18f, 13.0f)
+            curveTo(16.73f, 13.0f, 17.18f, 12.55f, 17.18f, 12.0f)
+            curveTo(17.18f, 11.45f, 16.73f, 11.0f, 16.18f, 11.0f)
+            close()
+            moveTo(4.0f, 17.0f)
+            lineTo(8.36f, 17.0f)
+            curveTo(8.78f, 15.84f, 9.88f, 15.0f, 11.18f, 15.0f)
+            curveTo(12.48f, 15.0f, 13.58f, 15.84f, 14.0f, 17.0f)
+            lineTo(20.0f, 17.0f)
+            lineTo(20.0f, 19.0f)
+            lineTo(14.0f, 19.0f)
+            curveTo(13.58f, 20.16f, 12.48f, 21.0f, 11.18f, 21.0f)
+            curveTo(9.88f, 21.0f, 8.78f, 20.16f, 8.36f, 19.0f)
+            lineTo(4.0f, 19.0f)
+            close()
+            moveTo(11.18f, 17.0f)
+            curveTo(10.63f, 17.0f, 10.18f, 17.45f, 10.18f, 18.0f)
+            curveTo(10.18f, 18.55f, 10.63f, 19.0f, 11.18f, 19.0f)
+            curveTo(11.73f, 19.0f, 12.18f, 18.55f, 12.18f, 18.0f)
+            curveTo(12.18f, 17.45f, 11.73f, 17.0f, 11.18f, 17.0f)
+            close()
+        }
+    }.build()
+
+internal val BackIcon: ImageVector =
+    ImageVector.Builder(
+        name = "Back",
+        defaultWidth = 24.dp,
+        defaultHeight = 24.dp,
+        viewportWidth = 24f,
+        viewportHeight = 24f,
+    ).apply {
+        path(fill = SolidColor(Color.Black)) {
+            moveTo(10.2f, 4.4f)
+            lineTo(11.6f, 5.8f)
+            lineTo(7.4f, 10.0f)
+            lineTo(20.0f, 10.0f)
+            lineTo(20.0f, 12.0f)
+            lineTo(7.4f, 12.0f)
+            lineTo(11.6f, 16.2f)
+            lineTo(10.2f, 17.6f)
+            lineTo(3.6f, 11.0f)
+            close()
+        }
+    }.build()
