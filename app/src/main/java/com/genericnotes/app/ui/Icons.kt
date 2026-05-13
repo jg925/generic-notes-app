@@ -198,6 +198,51 @@ internal val FitScreenIcon: ImageVector =
         }
     }.build()
 
+internal val MicrophoneIcon: ImageVector =
+    ImageVector.Builder(
+        name = "Microphone",
+        defaultWidth = 24.dp,
+        defaultHeight = 24.dp,
+        viewportWidth = 24f,
+        viewportHeight = 24f,
+    ).apply {
+        path(fill = SolidColor(Color.Black)) {
+            moveTo(12.0f, 2.0f)
+            curveTo(9.79f, 2.0f, 8.0f, 3.79f, 8.0f, 6.0f)
+            lineTo(8.0f, 11.0f)
+            curveTo(8.0f, 13.21f, 9.79f, 15.0f, 12.0f, 15.0f)
+            curveTo(14.21f, 15.0f, 16.0f, 13.21f, 16.0f, 11.0f)
+            lineTo(16.0f, 6.0f)
+            curveTo(16.0f, 3.79f, 14.21f, 2.0f, 12.0f, 2.0f)
+            close()
+            moveTo(10.0f, 6.0f)
+            curveTo(10.0f, 4.9f, 10.9f, 4.0f, 12.0f, 4.0f)
+            curveTo(13.1f, 4.0f, 14.0f, 4.9f, 14.0f, 6.0f)
+            lineTo(14.0f, 11.0f)
+            curveTo(14.0f, 12.1f, 13.1f, 13.0f, 12.0f, 13.0f)
+            curveTo(10.9f, 13.0f, 10.0f, 12.1f, 10.0f, 11.0f)
+            close()
+            moveTo(5.0f, 10.0f)
+            lineTo(7.0f, 10.0f)
+            lineTo(7.0f, 11.0f)
+            curveTo(7.0f, 13.76f, 9.24f, 16.0f, 12.0f, 16.0f)
+            curveTo(14.76f, 16.0f, 17.0f, 13.76f, 17.0f, 11.0f)
+            lineTo(17.0f, 10.0f)
+            lineTo(19.0f, 10.0f)
+            lineTo(19.0f, 11.0f)
+            curveTo(19.0f, 14.53f, 16.39f, 17.44f, 13.0f, 17.93f)
+            lineTo(13.0f, 20.0f)
+            lineTo(17.0f, 20.0f)
+            lineTo(17.0f, 22.0f)
+            lineTo(7.0f, 22.0f)
+            lineTo(7.0f, 20.0f)
+            lineTo(11.0f, 20.0f)
+            lineTo(11.0f, 17.93f)
+            curveTo(7.61f, 17.44f, 5.0f, 14.53f, 5.0f, 11.0f)
+            close()
+        }
+    }.build()
+
 internal val SaveIcon: ImageVector =
     ImageVector.Builder(
         name = "Save",
