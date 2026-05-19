@@ -10,19 +10,45 @@ import android.speech.RecognitionListener
 import android.speech.RecognizerIntent
 import android.speech.SpeechRecognizer
 import java.util.Locale
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.atomic.AtomicReference
 
 internal class SpeechRecognitionSession(
     private val context: Context,
 ) {
-    private val mainHandler = Handler(Looper.getMainLooper())
     private var speechRecognizer: SpeechRecognizer? = null
     private var activeSessionId = 0
     private var recordingState = RecordingSessionState.Idle
     private var lastPartialResult: String? = null
 
-    fun startListening(callbacks: SpeechRecognitionCallbacks): SpeechRecognitionStartResult {
-        release(cancel = true)
-        if (!isOnDeviceRecognitionAvailable(context)) {
+    fun startListening(callbacks: SpeechRecognitionCallbacks): SpeechRecognitionStartResult =
+        runOnMainThread {
+            startListeningOnMainThread(callbacks)
+        }
+
+    fun stopListening(): SpeechRecognitionStopResult =
+        runOnMainThread {
+            stopListeningOnMainThread()
+        }
+
+    fun release(cancel: Boolean) {
+        runOnMainThread {
+            releaseOnMainThread(cancel)
+        }
+    }
+
+    companion object {
+        fun isOnDeviceRecognitionAvailable(context: Context): Boolean =
+            runOnMainThread {
+                isOnDeviceRecognitionAvailableOnMainThread(context)
+            }
+    }
+
+    private fun startListeningOnMainThread(
+        callbacks: SpeechRecognitionCallbacks,
+    ): SpeechRecognitionStartResult {
+        releaseOnMainThread(cancel = true)
+        if (!isOnDeviceRecognitionAvailableOnMainThread(context)) {
             return SpeechRecognitionStartResult.OnDeviceUnavailable
         }
 
@@ -39,19 +65,19 @@ internal class SpeechRecognitionSession(
         runCatching {
             activeSpeechRecognizer.setRecognitionListener(
                 DictationRecognitionListener(
-                    onReadyForSpeech = {
+                    handleReadyForSpeech = {
                         if (isCurrentSession(sessionId)) {
                             recordingState = RecordingSessionState.Listening
                             callbacks.onReadyForSpeech()
                         }
                     },
-                    onEndOfSpeech = {
+                    handleEndOfSpeech = {
                         if (isCurrentSession(sessionId)) {
                             recordingState = RecordingSessionState.Stopping
                             callbacks.onEndOfSpeech()
                         }
                     },
-                    onPartialResult = { result ->
+                    handlePartialResult = { result ->
                         if (isCurrentSession(sessionId) &&
                             recordingState == RecordingSessionState.Listening &&
                             result != lastPartialResult
@@ -60,13 +86,13 @@ internal class SpeechRecognitionSession(
                             callbacks.onPartialResult(result)
                         }
                     },
-                    onFinalResult = { result ->
+                    handleFinalResult = { result ->
                         if (isCurrentSession(sessionId)) {
                             callbacks.onFinalResult(result)
                             releaseAfterCallback(sessionId, cancel = false)
                         }
                     },
-                    onError = { error ->
+                    handleError = { error ->
                         if (isCurrentSession(sessionId)) {
                             callbacks.onErrorMessage(dictationErrorMessageFor(error))
                             releaseAfterCallback(sessionId, cancel = false)
@@ -75,7 +101,7 @@ internal class SpeechRecognitionSession(
                 ),
             )
         }.onFailure {
-            release(cancel = false)
+            releaseOnMainThread(cancel = false)
             return SpeechRecognitionStartResult.ListenerError
         }
 
@@ -84,12 +110,12 @@ internal class SpeechRecognitionSession(
             activeSpeechRecognizer.startListening(createDictationIntent())
             SpeechRecognitionStartResult.Started
         }.getOrElse {
-            release(cancel = false)
+            releaseOnMainThread(cancel = false)
             SpeechRecognitionStartResult.StartError
         }
     }
 
-    fun stopListening(): SpeechRecognitionStopResult {
+    private fun stopListeningOnMainThread(): SpeechRecognitionStopResult {
         val recognizer = speechRecognizer
         if (recognizer == null) {
             return SpeechRecognitionStopResult.NoActiveSession
@@ -106,21 +132,15 @@ internal class SpeechRecognitionSession(
             recognizer.stopListening()
             SpeechRecognitionStopResult.Stopping
         }.getOrElse {
-            release(cancel = true)
+            releaseOnMainThread(cancel = true)
             SpeechRecognitionStopResult.StopError
         }
     }
 
-    fun release(cancel: Boolean) {
+    private fun releaseOnMainThread(cancel: Boolean) {
         val recognizer = detachRecognizer()
         if (recognizer == null) return
         destroyRecognizer(recognizer, cancel)
-    }
-
-    companion object {
-        fun isOnDeviceRecognitionAvailable(context: Context): Boolean =
-            Build.VERSION.SDK_INT >= Build.VERSION_CODES.S &&
-                SpeechRecognizer.isOnDeviceRecognitionAvailable(context)
     }
 
     private fun nextSessionId(): Int {
@@ -137,7 +157,7 @@ internal class SpeechRecognitionSession(
         if (!isCurrentSession(sessionId)) return
         val recognizer = detachRecognizer()
         if (recognizer == null) return
-        mainHandler.post {
+        postOnMainThread {
             destroyRecognizer(recognizer, cancel)
         }
     }
@@ -156,6 +176,54 @@ internal class SpeechRecognitionSession(
             runCatching { recognizer.cancel() }
         }
         runCatching { recognizer.destroy() }
+    }
+}
+
+private val speechRecognizerMainHandler = Handler(Looper.getMainLooper())
+
+private fun isOnDeviceRecognitionAvailableOnMainThread(context: Context): Boolean =
+    Build.VERSION.SDK_INT >= Build.VERSION_CODES.S &&
+        SpeechRecognizer.isOnDeviceRecognitionAvailable(context)
+
+private fun <T> runOnMainThread(block: () -> T): T {
+    if (Looper.myLooper() == Looper.getMainLooper()) {
+        return block()
+    }
+
+    val result = AtomicReference<T>()
+    val failure = AtomicReference<Throwable>()
+    val latch = CountDownLatch(1)
+    val posted = speechRecognizerMainHandler.post {
+        try {
+            result.set(block())
+        } catch (throwable: Throwable) {
+            failure.set(throwable)
+        } finally {
+            latch.countDown()
+        }
+    }
+
+    check(posted) { "Unable to dispatch speech recognition work to the main thread." }
+    try {
+        latch.await()
+    } catch (exception: InterruptedException) {
+        Thread.currentThread().interrupt()
+        throw IllegalStateException("Interrupted while waiting for main-thread speech recognition work.", exception)
+    }
+    failure.get()?.let { throw it }
+    return result.get()
+}
+
+private fun postOnMainThread(block: () -> Unit) {
+    val posted = speechRecognizerMainHandler.post(block)
+    check(posted) { "Unable to dispatch speech recognition cleanup to the main thread." }
+}
+
+private fun callOnMainThread(block: () -> Unit) {
+    if (Looper.myLooper() == Looper.getMainLooper()) {
+        block()
+    } else {
+        postOnMainThread(block)
     }
 }
 
@@ -189,14 +257,16 @@ internal enum class SpeechRecognitionStopResult {
 }
 
 private class DictationRecognitionListener(
-    private val onReadyForSpeech: () -> Unit,
-    private val onEndOfSpeech: () -> Unit,
-    private val onPartialResult: (String) -> Unit,
-    private val onFinalResult: (String) -> Unit,
-    private val onError: (Int) -> Unit,
+    private val handleReadyForSpeech: () -> Unit,
+    private val handleEndOfSpeech: () -> Unit,
+    private val handlePartialResult: (String) -> Unit,
+    private val handleFinalResult: (String) -> Unit,
+    private val handleError: (Int) -> Unit,
 ) : RecognitionListener {
     override fun onReadyForSpeech(params: Bundle?) {
-        onReadyForSpeech()
+        callOnMainThread {
+            handleReadyForSpeech()
+        }
     }
 
     override fun onBeginningOfSpeech() = Unit
@@ -206,24 +276,32 @@ private class DictationRecognitionListener(
     override fun onBufferReceived(buffer: ByteArray?) = Unit
 
     override fun onEndOfSpeech() {
-        onEndOfSpeech()
+        callOnMainThread {
+            handleEndOfSpeech()
+        }
     }
 
     override fun onError(error: Int) {
-        onError(error)
+        callOnMainThread {
+            handleError(error)
+        }
     }
 
     override fun onResults(results: Bundle?) {
-        val result = results.firstRecognitionResult()
-        if (result == null) {
-            onError(SpeechRecognizer.ERROR_NO_MATCH)
-        } else {
-            onFinalResult(result)
+        callOnMainThread {
+            val result = results.firstRecognitionResult()
+            if (result == null) {
+                handleError(SpeechRecognizer.ERROR_NO_MATCH)
+            } else {
+                handleFinalResult(result)
+            }
         }
     }
 
     override fun onPartialResults(partialResults: Bundle?) {
-        partialResults.firstRecognitionResult()?.let(onPartialResult)
+        callOnMainThread {
+            partialResults.firstRecognitionResult()?.let(handlePartialResult)
+        }
     }
 
     override fun onEvent(eventType: Int, params: Bundle?) = Unit
