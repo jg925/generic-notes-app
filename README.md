@@ -13,7 +13,7 @@ The app starts by asking whether to open an existing `.hwdn` file or create a ne
 
 1. Open this folder in Android Studio.
 2. Let Android Studio sync the Gradle project.
-3. Connect a Samsung tablet with USB debugging enabled, or start an Android tablet emulator.
+3. Connect a Samsung tablet with USB/Wifi debugging enabled, or start an Android tablet emulator.
 4. Run the `app` configuration.
 
 The app uses `minSdk 26`, `targetSdk 35`, and `compileSdk 35`.
