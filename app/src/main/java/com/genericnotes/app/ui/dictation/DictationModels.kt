@@ -4,7 +4,7 @@ import java.time.Instant
 
 internal data class DictationUnderstanding(
     val plainText: String,
-    val generatedAt: Instant,
+    val generatedAt: Instant?,
 )
 
 internal enum class DictationStatus(val displayText: String) {

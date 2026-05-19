@@ -20,16 +20,19 @@ internal class DictationController(
     val openSheet: () -> Unit,
     val beginDictation: (clearDraft: Boolean) -> Unit,
     val stopDictation: () -> Unit,
-    val saveDraft: () -> Unit,
+    val saveDraft: () -> DictationUnderstanding?,
     val closeSheet: () -> Unit,
 )
 
 @Composable
-internal fun rememberDictationController(resetKey: Any?): DictationController {
+internal fun rememberDictationController(
+    resetKey: Any?,
+    initialUnderstanding: DictationUnderstanding?,
+): DictationController {
     val context = LocalContext.current
     var isSheetVisible by remember(resetKey) { mutableStateOf(false) }
-    var draftText by remember(resetKey) { mutableStateOf("") }
-    var savedUnderstanding by remember(resetKey) { mutableStateOf<DictationUnderstanding?>(null) }
+    var draftText by remember(resetKey) { mutableStateOf(initialUnderstanding?.plainText.orEmpty()) }
+    var savedUnderstanding by remember(resetKey) { mutableStateOf(initialUnderstanding) }
     var status by remember(resetKey) { mutableStateOf(DictationStatus.Idle) }
     var errorMessage by remember(resetKey) { mutableStateOf<String?>(null) }
     var clearDraftAfterPermissionGrant by remember(resetKey) { mutableStateOf(false) }
@@ -166,20 +169,22 @@ internal fun rememberDictationController(resetKey: Any?): DictationController {
         isSheetVisible = false
     }
 
-    fun saveDictationDraft() {
+    fun saveDictationDraft(): DictationUnderstanding? {
         val plainText = draftText.trim()
-        if (plainText.isBlank()) return
+        if (plainText.isBlank()) return null
 
         speechRecognitionSession.release(cancel = true)
-        savedUnderstanding = DictationUnderstanding(
+        val understanding = DictationUnderstanding(
             plainText = plainText,
             generatedAt = Instant.now(),
         )
+        savedUnderstanding = understanding
         draftText = plainText
         status = DictationStatus.Saved
         errorMessage = null
         clearDraftAfterPermissionGrant = false
         isSheetVisible = false
+        return understanding
     }
 
     return DictationController(

@@ -62,7 +62,10 @@ internal fun HwdnApp() {
             context.readHwdnDocument(uri)
         }.onSuccess { document ->
             if (persistPermission) {
-                persistUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                persistUriPermission(
+                    uri,
+                    Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION,
+                )
             }
 
             rememberRecentFile(uri, document.fileName)
