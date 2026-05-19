@@ -23,8 +23,10 @@ import com.genericnotes.app.hwdn.readHwdnDocument
 internal fun HwdnApp() {
     val context = LocalContext.current
     var isEditorOpen by remember { mutableStateOf(false) }
+    var isSettingsOpen by remember { mutableStateOf(false) }
     var initialDocument by remember { mutableStateOf<HwdnDocument?>(null) }
     var recentFiles by remember { mutableStateOf(context.loadRecentHwdnFiles()) }
+    var appAestheticColor by remember { mutableStateOf(context.loadAppAestheticColor()) }
 
     fun refreshRecentFiles() {
         recentFiles = context.loadRecentHwdnFiles()
@@ -50,12 +52,20 @@ internal fun HwdnApp() {
         refreshRecentFiles()
     }
 
+    fun updateAppAestheticColor(aestheticColor: AppAestheticColor) {
+        appAestheticColor = aestheticColor
+        context.saveAppAestheticColor(aestheticColor)
+    }
+
     fun openDocumentUri(uri: Uri, persistPermission: Boolean) {
         runCatching {
             context.readHwdnDocument(uri)
         }.onSuccess { document ->
             if (persistPermission) {
-                persistUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                persistUriPermission(
+                    uri,
+                    Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION,
+                )
             }
 
             rememberRecentFile(uri, document.fileName)
@@ -91,6 +101,7 @@ internal fun HwdnApp() {
 
         NotesCanvasScreen(
             initialDocument = initialDocument,
+            accentColor = appAestheticColor.color,
             onDocumentSaved = { uri, documentName ->
                 persistUriPermission(
                     uri = uri,
@@ -98,6 +109,16 @@ internal fun HwdnApp() {
                 )
                 rememberRecentFile(uri, documentName)
             },
+        )
+    } else if (isSettingsOpen) {
+        BackHandler {
+            isSettingsOpen = false
+        }
+
+        SettingsScreen(
+            selectedAestheticColor = appAestheticColor,
+            onAestheticColorSelected = ::updateAppAestheticColor,
+            onBack = { isSettingsOpen = false },
         )
     } else {
         OpenOrCreateScreen(
@@ -110,6 +131,8 @@ internal fun HwdnApp() {
             onOpenRecent = { recentFile ->
                 openDocumentUri(recentFile.uri, persistPermission = false)
             },
+            onOpenSettings = { isSettingsOpen = true },
+            accentColor = appAestheticColor.color,
         )
     }
 }

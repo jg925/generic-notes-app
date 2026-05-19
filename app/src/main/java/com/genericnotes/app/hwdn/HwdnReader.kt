@@ -23,7 +23,7 @@ internal fun Context.readHwdnDocument(uri: Uri): HwdnDocument {
         inputStream.readBytes()
     } ?: error("Unable to open .hwdn file.")
 
-    return parseHwdnPackage(bytes, displayName)
+    return parseHwdnPackage(bytes, displayName).copy(sourceUri = uri)
 }
 
 internal fun Context.displayNameFor(uri: Uri): String? =
@@ -74,6 +74,7 @@ internal fun parseHwdnPackage(bytes: ByteArray, fallbackFileName: String?): Hwdn
         fileName = fileName,
         strokes = strokes,
         pageLayout = canvas.optJSONObject("genericNotesPageLayout").toNotePageLayout(),
+        interpretation = canvas.optJSONObject("interpretation")?.toHwdnInterpretation(),
     )
 }
 
@@ -135,6 +136,20 @@ private fun JSONObject?.toNotePageLayout(): NotePageLayout {
         displayMode = pageDisplayModeFromSerializedName(optStringOrNull("displayMode")),
         pageWidthPx = pageSize?.optPositiveInt("width"),
         pageHeightPx = pageSize?.optPositiveInt("height"),
+    )
+}
+
+private fun JSONObject.toHwdnInterpretation(): HwdnInterpretation? {
+    val plainText = optStringOrNull("plainText") ?: return null
+    val generatedAt = optStringOrNull("generatedAt")?.let { rawGeneratedAt ->
+        runCatching {
+            Instant.parse(rawGeneratedAt)
+        }.getOrNull()
+    }
+
+    return HwdnInterpretation(
+        plainText = plainText,
+        generatedAt = generatedAt,
     )
 }
 
