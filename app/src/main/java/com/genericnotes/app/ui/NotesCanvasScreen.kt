@@ -1,30 +1,23 @@
 package com.genericnotes.app.ui
 
-import android.hardware.input.InputManager
 import android.net.Uri
-import android.os.Handler
-import android.os.Looper
-import android.view.InputDevice
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
-import androidx.compose.material3.IconButtonDefaults
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -32,23 +25,25 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
-import com.genericnotes.app.canvas.DrawingTool
 import com.genericnotes.app.canvas.InkCanvasView
 import com.genericnotes.app.hwdn.HwdnDocument
+import com.genericnotes.app.hwdn.HwdnInterpretation
 import com.genericnotes.app.hwdn.HwdnMimeType
 import com.genericnotes.app.hwdn.MaxFileNameLength
+import com.genericnotes.app.hwdn.displayNameFor
 import com.genericnotes.app.hwdn.exportHwdnPackage
 import com.genericnotes.app.hwdn.toHwdnFileName
 import com.genericnotes.app.hwdn.withoutHwdnExtension
 import com.genericnotes.app.settings.AppCanvasSettings
 import com.genericnotes.app.settings.loadAppCanvasSettings
 import com.genericnotes.app.settings.saveAppCanvasSettings
+import com.genericnotes.app.ui.dictation.DictationUnderstanding
+import com.genericnotes.app.ui.dictation.DictationPreviewSheet
+import com.genericnotes.app.ui.dictation.rememberDictationController
 
 @Composable
 internal fun NotesCanvasScreen(
@@ -72,6 +67,12 @@ internal fun NotesCanvasScreen(
     var inkCanvasView by remember { mutableStateOf<InkCanvasView?>(null) }
     var pendingDocumentBytes by remember { mutableStateOf<ByteArray?>(null) }
     var pendingFileName by remember { mutableStateOf<String?>(null) }
+    var currentDocumentUri by remember(initialDocument) { mutableStateOf(initialDocument?.sourceUri) }
+    val dictationController = rememberDictationController(
+        resetKey = initialDocument,
+        initialUnderstanding = initialDocument?.interpretation?.toDictationUnderstanding(),
+    )
+    val dictationState = dictationController.state
 
     LaunchedEffect(context, isLocked, selectedTool, ignoreTouchInput) {
         context.saveAppCanvasSettings(
@@ -94,14 +95,63 @@ internal fun NotesCanvasScreen(
         if (uri == null || documentBytes == null || documentName == null) return@rememberLauncherForActivityResult
 
         runCatching {
-            context.contentResolver.openOutputStream(uri)?.use { outputStream ->
-                outputStream.write(documentBytes)
-            } ?: error("Unable to open save destination.")
+            context.writeHwdnBytes(uri, documentBytes)
         }.onSuccess {
+            currentDocumentUri = uri
+            fileName = (context.displayNameFor(uri) ?: documentName)
+                .withoutHwdnExtension()
+                .take(MaxFileNameLength)
             onDocumentSaved(uri, documentName)
             Toast.makeText(context, "Saved $documentName", Toast.LENGTH_SHORT).show()
         }.onFailure {
             Toast.makeText(context, "Save failed", Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    fun exportCurrentDocument(interpretation: HwdnInterpretation?): Pair<String, ByteArray>? {
+        val canvasView = inkCanvasView ?: return null
+        val hwdnFileName = fileName.toHwdnFileName()
+        val documentBytes = exportHwdnPackage(
+            strokes = canvasView.strokesSnapshot(),
+            fileName = hwdnFileName,
+            canvasWidth = canvasView.width,
+            canvasHeight = canvasView.height,
+            interpretation = interpretation,
+        )
+        return hwdnFileName to documentBytes
+    }
+
+    fun saveAsNewDocument(
+        interpretation: HwdnInterpretation? = dictationState.savedUnderstanding?.toHwdnInterpretation(),
+    ) {
+        val (hwdnFileName, documentBytes) = exportCurrentDocument(interpretation) ?: return
+        pendingDocumentBytes = documentBytes
+        pendingFileName = hwdnFileName
+        saveDocumentLauncher.launch(hwdnFileName)
+    }
+
+    fun writeExistingDocument(uri: Uri, interpretation: HwdnInterpretation) {
+        val (hwdnFileName, documentBytes) = exportCurrentDocument(interpretation) ?: return
+
+        runCatching {
+            context.writeHwdnBytes(uri, documentBytes)
+        }.onSuccess {
+            currentDocumentUri = uri
+            onDocumentSaved(uri, hwdnFileName)
+            Toast.makeText(context, "Saved interpretation to $hwdnFileName", Toast.LENGTH_SHORT).show()
+        }.onFailure {
+            Toast.makeText(context, "Could not update opened file", Toast.LENGTH_SHORT).show()
+            saveAsNewDocument(interpretation)
+        }
+    }
+
+    fun persistSavedInterpretation(understanding: DictationUnderstanding) {
+        val interpretation = understanding.toHwdnInterpretation()
+        val targetUri = currentDocumentUri
+        if (targetUri != null) {
+            writeExistingDocument(targetUri, interpretation)
+        } else {
+            saveAsNewDocument(interpretation)
         }
     }
 
@@ -132,97 +182,40 @@ internal fun NotesCanvasScreen(
             fileName = fileName,
             onFileNameChange = { fileName = it.withoutHwdnExtension().take(MaxFileNameLength) },
             accentColor = accentColor,
-            onSave = {
-                val hwdnFileName = fileName.toHwdnFileName()
-                val canvasView = inkCanvasView ?: return@FilePanel
-                pendingDocumentBytes = exportHwdnPackage(
-                    strokes = canvasView.strokesSnapshot(),
-                    fileName = hwdnFileName,
-                    canvasWidth = canvasView.width,
-                    canvasHeight = canvasView.height,
-                )
-                pendingFileName = hwdnFileName
-                saveDocumentLauncher.launch(hwdnFileName)
-            },
+            onSave = { saveAsNewDocument() },
             modifier = Modifier
                 .align(Alignment.TopStart)
                 .padding(24.dp),
         )
 
-        Surface(
+        NotesCanvasToolbar(
+            canUndo = canUndo,
+            canRedo = canRedo,
+            canResetZoom = canResetZoom,
+            selectedTool = selectedTool,
+            supportsTrueStylusInput = supportsTrueStylusInput,
+            ignoreTouchInput = ignoreTouchInput,
+            accentColor = accentColor,
+            onUndo = {
+                inkCanvasView?.let { canvasView ->
+                    canvasView.undoLastStroke()
+                    canUndo = canvasView.canUndo
+                }
+            },
+            onRedo = {
+                inkCanvasView?.let { canvasView ->
+                    canvasView.redoLastStroke()
+                    canRedo = canvasView.canRedo
+                }
+            },
+            onResetZoom = { inkCanvasView?.resetZoomToFullScreen() },
+            onSelectTool = { selectedTool = it },
+            onTogglePalmReject = { ignoreTouchInput = !ignoreTouchInput },
             modifier = Modifier
                 .align(Alignment.TopCenter)
-                .padding(top = 24.dp),
-            color = Color(0xFFF4F4F4),
-            contentColor = accentColor,
-            shape = RoundedCornerShape(8.dp),
-            tonalElevation = 2.dp,
-            shadowElevation = 2.dp,
-        ) {
-            Row(
-                modifier = Modifier.padding(horizontal = 6.dp, vertical = 6.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                ToolButton(
-                    icon = UndoIcon,
-                    contentDescription = "undo",
-                    selected = false,
-                    enabled = canUndo,
-                    accentColor = accentColor,
-                    onClick = {
-                        inkCanvasView?.let { canvasView ->
-                            canvasView.undoLastStroke()
-                            canUndo = canvasView.canUndo
-                        }
-                    },
-                )
-                ToolButton(
-                    icon = RedoIcon,
-                    contentDescription = "redo",
-                    selected = false,
-                    enabled = canRedo,
-                    accentColor = accentColor,
-                    onClick = {
-                        inkCanvasView?.let { canvasView ->
-                            canvasView.redoLastStroke()
-                            canRedo = canvasView.canRedo
-                        }
-                    },
-                )
-                ToolButton(
-                    icon = FitScreenIcon,
-                    contentDescription = "reset zoom",
-                    selected = false,
-                    enabled = canResetZoom,
-                    accentColor = accentColor,
-                    onClick = { inkCanvasView?.resetZoomToFullScreen() },
-                )
-                ToolButton(
-                    icon = PenIcon,
-                    contentDescription = "pen",
-                    selected = selectedTool == DrawingTool.Pen,
-                    accentColor = accentColor,
-                    onClick = { selectedTool = DrawingTool.Pen },
-                )
-                ToolButton(
-                    icon = EraserIcon,
-                    contentDescription = "eraser",
-                    selected = selectedTool == DrawingTool.Eraser,
-                    accentColor = accentColor,
-                    onClick = { selectedTool = DrawingTool.Eraser },
-                )
-                if (supportsTrueStylusInput) {
-                    ToolButton(
-                        icon = HandIcon,
-                        contentDescription = "palm reject",
-                        selected = ignoreTouchInput,
-                        accentColor = accentColor,
-                        onClick = { ignoreTouchInput = !ignoreTouchInput },
-                        struckThrough = ignoreTouchInput,
-                    )
-                }
-            }
-        }
+                .padding(top = 24.dp)
+                .offset(x = 64.dp),
+        )
 
         Button(
             onClick = { isLocked = !isLocked },
@@ -237,94 +230,86 @@ internal fun NotesCanvasScreen(
         ) {
             Text(if (isLocked) "Unlock edits" else "Lock edits")
         }
+
+        if (!dictationState.isSheetVisible) {
+            InterpretationActionButton(
+                accentColor = accentColor,
+                onClick = dictationController.openSheet,
+                modifier = Modifier
+                    .align(Alignment.BottomEnd)
+                    .padding(24.dp)
+                    .navigationBarsPadding(),
+            )
+        }
+
+        if (dictationState.isSheetVisible) {
+            DictationPreviewSheet(
+                state = dictationState,
+                accentColor = accentColor,
+                onDraftChange = dictationController.onDraftChange,
+                onRecordAgain = { dictationController.beginDictation(true) },
+                onStopListening = dictationController.stopDictation,
+                onSave = {
+                    dictationController.saveDraft()?.let(::persistSavedInterpretation)
+                },
+                onCancel = dictationController.closeSheet,
+                modifier = Modifier.align(Alignment.BottomCenter),
+            )
+        }
     }
 }
 
-@Composable
-private fun rememberSupportsTrueStylusInput(): Boolean {
-    val context = LocalContext.current
-    var supportsTrueStylusInput by remember(context) { mutableStateOf(context.supportsTrueStylusInput()) }
+private fun android.content.Context.writeHwdnBytes(uri: Uri, documentBytes: ByteArray) {
+    val outputStream = runCatching {
+        contentResolver.openOutputStream(uri, "wt")
+    }.getOrNull()
+        ?: contentResolver.openOutputStream(uri)
+        ?: error("Unable to open save destination.")
 
-    DisposableEffect(context) {
-        val inputManager = context.getSystemService(InputManager::class.java)
-        val listener = object : InputManager.InputDeviceListener {
-            override fun onInputDeviceAdded(deviceId: Int) {
-                supportsTrueStylusInput = context.supportsTrueStylusInput()
-            }
-
-            override fun onInputDeviceChanged(deviceId: Int) {
-                supportsTrueStylusInput = context.supportsTrueStylusInput()
-            }
-
-            override fun onInputDeviceRemoved(deviceId: Int) {
-                supportsTrueStylusInput = context.supportsTrueStylusInput()
-            }
-        }
-
-        inputManager?.registerInputDeviceListener(listener, Handler(Looper.getMainLooper()))
-        onDispose {
-            inputManager?.unregisterInputDeviceListener(listener)
-        }
+    outputStream.use { stream ->
+        stream.write(documentBytes)
     }
-
-    return supportsTrueStylusInput
 }
 
-private fun android.content.Context.supportsTrueStylusInput(): Boolean =
-    InputDevice.getDeviceIds().any { deviceId ->
-        InputDevice.getDevice(deviceId)?.let { inputDevice ->
-            inputDevice.supportsSource(InputDevice.SOURCE_STYLUS) ||
-                inputDevice.supportsSource(InputDevice.SOURCE_BLUETOOTH_STYLUS)
-        } == true
-    }
+private fun HwdnInterpretation.toDictationUnderstanding(): DictationUnderstanding =
+    DictationUnderstanding(
+        plainText = plainText,
+        generatedAt = generatedAt,
+    )
+
+private fun DictationUnderstanding.toHwdnInterpretation(): HwdnInterpretation =
+    HwdnInterpretation(
+        plainText = plainText,
+        generatedAt = generatedAt,
+    )
 
 @Composable
-private fun ToolButton(
-    icon: androidx.compose.ui.graphics.vector.ImageVector,
-    contentDescription: String,
-    selected: Boolean,
-    onClick: () -> Unit,
+private fun InterpretationActionButton(
     accentColor: Color,
-    enabled: Boolean = true,
-    struckThrough: Boolean = false,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
 ) {
-    val toolbarBackgroundColor = Color(0xFFF4F4F4)
-
-    StylusHoverTooltipBox(
-        tooltipText = contentDescription,
-        containerColor = accentColor,
+    Button(
+        onClick = onClick,
+        modifier = modifier,
+        colors = ButtonDefaults.buttonColors(
+            containerColor = accentColor,
+            contentColor = Color.White,
+        ),
+        shape = RoundedCornerShape(8.dp),
     ) {
-        IconButton(
-            onClick = onClick,
-            enabled = enabled,
-            modifier = Modifier.size(44.dp),
-            colors = IconButtonDefaults.iconButtonColors(
-                containerColor = if (selected) accentColor else Color.Transparent,
-                contentColor = if (selected) Color.White else accentColor,
-                disabledContentColor = accentColor.copy(alpha = 0.38f),
-            ),
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
         ) {
-            Box(
-                modifier = Modifier.size(22.dp),
-                contentAlignment = Alignment.Center,
-            ) {
-                Icon(
-                    imageVector = icon,
-                    contentDescription = contentDescription,
-                    modifier = Modifier.fillMaxSize(),
-                )
-                if (struckThrough) {
-                    Canvas(modifier = Modifier.fillMaxSize()) {
-                        drawLine(
-                            color = if (selected) accentColor else toolbarBackgroundColor,
-                            start = Offset(size.width * 0.18f, size.height * 0.82f),
-                            end = Offset(size.width * 0.82f, size.height * 0.18f),
-                            strokeWidth = 3.dp.toPx(),
-                            cap = StrokeCap.Round,
-                        )
-                    }
-                }
-            }
+            Icon(
+                imageVector = MicrophoneIcon,
+                contentDescription = "set interpretation",
+                modifier = Modifier.size(20.dp),
+            )
+            Text(
+                text = "Set Interpretation",
+                modifier = Modifier.padding(start = 8.dp),
+            )
         }
     }
 }

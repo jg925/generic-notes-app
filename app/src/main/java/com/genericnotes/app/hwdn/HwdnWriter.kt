@@ -18,12 +18,14 @@ internal fun exportHwdnPackage(
     fileName: String,
     canvasWidth: Int,
     canvasHeight: Int,
+    interpretation: HwdnInterpretation? = null,
 ): ByteArray {
     val exportedAt = Instant.now()
     val packageId = "note-${UUID.randomUUID()}"
     val documentId = "doc-${UUID.randomUUID()}"
     val canvasId = "canvas-${UUID.randomUUID()}"
     val title = fileName.withoutHwdnExtension().trim().ifBlank { "Untitled Note" }
+    val normalizedInterpretation = interpretation?.takeIf { it.plainText.isNotBlank() }
     val noteJson = createNoteJson(
         strokes = strokes,
         documentId = documentId,
@@ -32,11 +34,13 @@ internal fun exportHwdnPackage(
         timestamp = exportedAt,
         canvasWidth = canvasWidth.coerceAtLeast(1),
         canvasHeight = canvasHeight.coerceAtLeast(1),
+        interpretation = normalizedInterpretation,
     )
     val manifestJson = createManifestJson(
         packageId = packageId,
         fileName = fileName,
         timestamp = exportedAt,
+        includesInterpretation = normalizedInterpretation != null,
     )
 
     return ByteArrayOutputStream().use { byteOutput ->
@@ -50,8 +54,30 @@ internal fun exportHwdnPackage(
     }
 }
 
-private fun createManifestJson(packageId: String, fileName: String, timestamp: Instant): JSONObject =
-    JSONObject()
+private fun createManifestJson(
+    packageId: String,
+    fileName: String,
+    timestamp: Instant,
+    includesInterpretation: Boolean,
+): JSONObject {
+    val features = JSONArray()
+        .put(
+            JSONObject()
+                .put("name", "canvas-strokes")
+                .put("required", true)
+                .put("version", HwdnFormatVersion),
+        )
+
+    if (includesInterpretation) {
+        features.put(
+            JSONObject()
+                .put("name", "structured-interpretation")
+                .put("required", false)
+                .put("version", HwdnFormatVersion),
+        )
+    }
+
+    return JSONObject()
         .put("format", "hwdn")
         .put("formatVersion", HwdnFormatVersion)
         .put("id", packageId)
@@ -65,16 +91,8 @@ private fun createManifestJson(packageId: String, fileName: String, timestamp: I
                 .put("version", SourceApplicationVersion),
         )
         .put("payload", "note.json")
-        .put(
-            "features",
-            JSONArray()
-                .put(
-                    JSONObject()
-                        .put("name", "canvas-strokes")
-                        .put("required", true)
-                        .put("version", HwdnFormatVersion),
-                ),
-        )
+        .put("features", features)
+}
 
 private fun createNoteJson(
     strokes: List<InkStroke>,
@@ -84,10 +102,30 @@ private fun createNoteJson(
     timestamp: Instant,
     canvasWidth: Int,
     canvasHeight: Int,
+    interpretation: HwdnInterpretation?,
 ): JSONObject {
     val canvasSize = JSONObject()
         .put("width", canvasWidth)
         .put("height", canvasHeight)
+    val canvasJson = JSONObject()
+        .put("id", canvasId)
+        .put("size", canvasSize)
+        .put(
+            "background",
+            JSONObject()
+                .put("color", "#ffffff")
+                .put("style", "blank"),
+        )
+        .put(
+            "strokes",
+            JSONArray().apply {
+                strokes.forEachIndexed { index, stroke ->
+                    put(stroke.toJson(index + 1))
+                }
+            },
+        )
+
+    interpretation?.let { canvasJson.put("interpretation", it.toJson()) }
 
     return JSONObject()
         .put(
@@ -106,27 +144,22 @@ private fun createNoteJson(
                         .put("version", SourceApplicationVersion),
                 ),
         )
-        .put(
-            "canvas",
-            JSONObject()
-                .put("id", canvasId)
-                .put("size", canvasSize)
-                .put(
-                    "background",
-                    JSONObject()
-                        .put("color", "#ffffff")
-                        .put("style", "blank"),
-                )
-                .put(
-                    "strokes",
-                    JSONArray().apply {
-                        strokes.forEachIndexed { index, stroke ->
-                            put(stroke.toJson(index + 1))
-                        }
-                    },
-                ),
-        )
+        .put("canvas", canvasJson)
 }
+
+private fun HwdnInterpretation.toJson(): JSONObject =
+    JSONObject()
+        .put("plainText", plainText.trim())
+        .apply {
+            generatedAt?.let { put("generatedAt", it.toString()) }
+        }
+        .put(
+            "source",
+            JSONObject()
+                .put("type", "human")
+                .put("name", SourceApplicationName)
+                .put("version", SourceApplicationVersion),
+        )
 
 private fun InkStroke.toJson(strokeNumber: Int): JSONObject =
     JSONObject()
