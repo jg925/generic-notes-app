@@ -26,7 +26,6 @@ internal fun NotesCanvasToolbar(
     canUndo: Boolean,
     canRedo: Boolean,
     canResetZoom: Boolean,
-    isDictationSelected: Boolean,
     selectedTool: DrawingTool,
     supportsTrueStylusInput: Boolean,
     ignoreTouchInput: Boolean,
@@ -34,7 +33,6 @@ internal fun NotesCanvasToolbar(
     onUndo: () -> Unit,
     onRedo: () -> Unit,
     onResetZoom: () -> Unit,
-    onOpenDictation: () -> Unit,
     onSelectTool: (DrawingTool) -> Unit,
     onTogglePalmReject: () -> Unit,
     modifier: Modifier = Modifier,
@@ -74,13 +72,6 @@ internal fun NotesCanvasToolbar(
                 enabled = canResetZoom,
                 accentColor = accentColor,
                 onClick = onResetZoom,
-            )
-            ToolButton(
-                icon = MicrophoneIcon,
-                contentDescription = "dictation",
-                selected = isDictationSelected,
-                accentColor = accentColor,
-                onClick = onOpenDictation,
             )
             ToolButton(
                 icon = PenIcon,

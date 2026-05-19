@@ -6,12 +6,16 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -143,7 +147,6 @@ internal fun NotesCanvasScreen(
             canUndo = canUndo,
             canRedo = canRedo,
             canResetZoom = canResetZoom,
-            isDictationSelected = dictationState.isSheetVisible,
             selectedTool = selectedTool,
             supportsTrueStylusInput = supportsTrueStylusInput,
             ignoreTouchInput = ignoreTouchInput,
@@ -161,7 +164,6 @@ internal fun NotesCanvasScreen(
                 }
             },
             onResetZoom = { inkCanvasView?.resetZoomToFullScreen() },
-            onOpenDictation = dictationController.openSheet,
             onSelectTool = { selectedTool = it },
             onTogglePalmReject = { ignoreTouchInput = !ignoreTouchInput },
             modifier = Modifier
@@ -184,6 +186,17 @@ internal fun NotesCanvasScreen(
             Text(if (isLocked) "Unlock edits" else "Lock edits")
         }
 
+        if (!dictationState.isSheetVisible) {
+            InterpretationActionButton(
+                accentColor = accentColor,
+                onClick = dictationController.openSheet,
+                modifier = Modifier
+                    .align(Alignment.BottomEnd)
+                    .padding(24.dp)
+                    .navigationBarsPadding(),
+            )
+        }
+
         if (dictationState.isSheetVisible) {
             DictationPreviewSheet(
                 state = dictationState,
@@ -194,6 +207,37 @@ internal fun NotesCanvasScreen(
                 onSave = dictationController.saveDraft,
                 onCancel = dictationController.closeSheet,
                 modifier = Modifier.align(Alignment.BottomCenter),
+            )
+        }
+    }
+}
+
+@Composable
+private fun InterpretationActionButton(
+    accentColor: Color,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Button(
+        onClick = onClick,
+        modifier = modifier,
+        colors = ButtonDefaults.buttonColors(
+            containerColor = accentColor,
+            contentColor = Color.White,
+        ),
+        shape = RoundedCornerShape(8.dp),
+    ) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Icon(
+                imageVector = MicrophoneIcon,
+                contentDescription = "set interpretation",
+                modifier = Modifier.size(20.dp),
+            )
+            Text(
+                text = "Set Interpretation",
+                modifier = Modifier.padding(start = 8.dp),
             )
         }
     }
