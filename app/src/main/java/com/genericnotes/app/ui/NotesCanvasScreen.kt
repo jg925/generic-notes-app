@@ -167,7 +167,7 @@ internal fun NotesCanvasScreen(
         saveDocumentLauncher.launch(hwdnFileName)
     }
 
-    fun writeExistingDocument(uri: Uri, interpretation: HwdnInterpretation) {
+    fun writeExistingDocument(uri: Uri, interpretation: HwdnInterpretation?) {
         val (hwdnFileName, documentBytes) = exportCurrentDocument(interpretation) ?: return
 
         runCatching {
@@ -175,9 +175,19 @@ internal fun NotesCanvasScreen(
         }.onSuccess {
             currentDocumentUri = uri
             onDocumentSaved(uri, hwdnFileName)
-            Toast.makeText(context, "Saved interpretation to $hwdnFileName", Toast.LENGTH_SHORT).show()
+            Toast.makeText(context, "Saved $hwdnFileName", Toast.LENGTH_SHORT).show()
         }.onFailure {
             Toast.makeText(context, "Could not update opened file", Toast.LENGTH_SHORT).show()
+            saveAsNewDocument(interpretation)
+        }
+    }
+
+    fun saveCurrentDocument() {
+        val interpretation = dictationState.savedUnderstanding?.toHwdnInterpretation()
+        val targetUri = currentDocumentUri
+        if (targetUri != null) {
+            writeExistingDocument(targetUri, interpretation)
+        } else {
             saveAsNewDocument(interpretation)
         }
     }
@@ -227,6 +237,21 @@ internal fun NotesCanvasScreen(
         } else {
             pageHeight
         }
+        val currentPage = when (renderedDirection) {
+            PageScrollDirection.Vertical -> currentPageNumber(
+                scrollOffsetPx = verticalScrollState.value,
+                pageExtentPx = with(density) { pageHeight.toPx() },
+                viewportExtentPx = with(density) { maxHeight.toPx() },
+                pageCount = pageCount,
+            )
+
+            PageScrollDirection.Horizontal -> currentPageNumber(
+                scrollOffsetPx = horizontalScrollState.value,
+                pageExtentPx = with(density) { pageWidth.toPx() },
+                viewportExtentPx = with(density) { maxWidth.toPx() },
+                pageCount = pageCount,
+            )
+        }
         val renderedPageLayout = currentPageLayout()
 
         Box(
@@ -264,7 +289,7 @@ internal fun NotesCanvasScreen(
             fileName = fileName,
             onFileNameChange = { fileName = it.withoutHwdnExtension().take(MaxFileNameLength) },
             accentColor = accentColor,
-            onSave = { saveAsNewDocument() },
+            onSave = { saveCurrentDocument() },
             modifier = Modifier
                 .align(Alignment.TopStart)
                 .padding(24.dp),
@@ -315,6 +340,7 @@ internal fun NotesCanvasScreen(
 
         if (!dictationState.isSheetVisible) {
             PageControls(
+                currentPage = currentPage,
                 pageCount = pageCount,
                 preferredDirection = preferredPageDirection,
                 lockedDirection = pageScrollDirection,
@@ -388,8 +414,21 @@ private fun DictationUnderstanding.toHwdnInterpretation(): HwdnInterpretation =
         generatedAt = generatedAt,
     )
 
+private fun currentPageNumber(
+    scrollOffsetPx: Int,
+    pageExtentPx: Float,
+    viewportExtentPx: Float,
+    pageCount: Int,
+): Int {
+    if (pageCount <= 1 || pageExtentPx <= 0f) return 1
+
+    val centeredOffsetPx = scrollOffsetPx + (viewportExtentPx / 2f)
+    return ((centeredOffsetPx / pageExtentPx).toInt() + 1).coerceIn(1, pageCount)
+}
+
 @Composable
 private fun PageControls(
+    currentPage: Int,
     pageCount: Int,
     preferredDirection: PageScrollDirection,
     lockedDirection: PageScrollDirection?,
@@ -416,9 +455,9 @@ private fun PageControls(
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Text(
-                text = pageCount.toString(),
+                text = "$currentPage / $pageCount",
                 color = accentColor,
-                modifier = Modifier.padding(end = 6.dp),
+                modifier = Modifier.padding(end = 8.dp),
             )
             PageControlButton(
                 icon = VerticalPagesIcon,

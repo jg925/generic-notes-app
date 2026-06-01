@@ -87,6 +87,10 @@ internal class InkCanvasView(context: Context) : View(context) {
         strokeWidth = 2f
         style = Paint.Style.STROKE
     }
+    private val pageGapPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = android.graphics.Color.rgb(233, 233, 233)
+        style = Paint.Style.FILL
+    }
     private val eraserXfermode = PorterDuffXfermode(PorterDuff.Mode.CLEAR)
     private var activeStroke: InkStroke? = null
     private var activePointerId: Int? = null
@@ -123,26 +127,18 @@ internal class InkCanvasView(context: Context) : View(context) {
 
     override fun onDraw(canvas: Canvas) {
         super.onDraw(canvas)
+        canvas.drawRect(0f, 0f, width.toFloat(), height.toFloat(), pageGapPaint)
         canvas.save()
         canvas.translate(canvasOffsetX, canvasOffsetY)
         canvas.scale(zoomScale, zoomScale)
-        canvas.drawRect(0f, 0f, width.toFloat(), height.toFloat(), canvasBackgroundPaint)
+        drawPageBackgrounds(canvas)
         inkBitmap?.let { bitmap -> canvas.drawBitmap(bitmap, 0f, 0f, null) }
-        drawPageDividers(canvas)
+        drawPageSeparators(canvas)
+        drawPageOutlines(canvas)
         if (isEraserPreviewVisible) {
             canvas.drawCircle(eraserPreviewX, eraserPreviewY, EraserStrokeWidth / 2f, eraserPreviewPaint)
         }
         canvas.restore()
-
-        if (canResetZoom) {
-            canvas.drawRect(
-                canvasOffsetX,
-                canvasOffsetY,
-                canvasOffsetX + (width * zoomScale),
-                canvasOffsetY + (height * zoomScale),
-                canvasBorderPaint,
-            )
-        }
     }
 
     override fun onTouchEvent(event: MotionEvent): Boolean {
@@ -215,10 +211,24 @@ internal class InkCanvasView(context: Context) : View(context) {
         return true
     }
 
-    // TODO: add a gap for the split pages view. and draw the line for the seamless view.
-    private fun drawPageDividers(canvas: Canvas) {
-        if (pageLayout.displayMode != PageDisplayMode.Split) return
+    private fun drawPageBackgrounds(canvas: Canvas) {
+        if (pageLayout.displayMode != PageDisplayMode.Split) {
+            canvas.drawRect(0f, 0f, width.toFloat(), height.toFloat(), canvasBackgroundPaint)
+            return
+        }
 
+        val pageCount = pageLayout.normalizedPageCount
+        val direction = pageLayout.scrollDirection
+        if (pageCount <= 1 || direction == null) {
+            canvas.drawRect(0f, 0f, width.toFloat(), height.toFloat(), canvasBackgroundPaint)
+            return
+        }
+
+        canvas.drawRect(0f, 0f, width.toFloat(), height.toFloat(), pageGapPaint)
+        drawSplitPageRects(canvas, direction, pageCount, canvasBackgroundPaint)
+    }
+
+    private fun drawPageSeparators(canvas: Canvas) {
         val pageCount = pageLayout.normalizedPageCount
         val direction = pageLayout.scrollDirection ?: return
         if (pageCount <= 1) return
@@ -228,7 +238,7 @@ internal class InkCanvasView(context: Context) : View(context) {
                 val pageHeight = height.toFloat() / pageCount
                 for (pageIndex in 1 until pageCount) {
                     val y = pageHeight * pageIndex
-                    canvas.drawLine(0f, y, width.toFloat(), y, pageDividerPaint)
+                    drawHorizontalPageSeparator(canvas, y, pageHeight)
                 }
             }
 
@@ -236,7 +246,68 @@ internal class InkCanvasView(context: Context) : View(context) {
                 val pageWidth = width.toFloat() / pageCount
                 for (pageIndex in 1 until pageCount) {
                     val x = pageWidth * pageIndex
-                    canvas.drawLine(x, 0f, x, height.toFloat(), pageDividerPaint)
+                    drawVerticalPageSeparator(canvas, x, pageWidth)
+                }
+            }
+        }
+    }
+
+    private fun drawHorizontalPageSeparator(canvas: Canvas, y: Float, pageHeight: Float) {
+        if (pageLayout.displayMode == PageDisplayMode.Split) {
+            val halfGap = (splitPageGapPx(pageHeight) / 2f)
+            canvas.drawRect(0f, y - halfGap, width.toFloat(), y + halfGap, pageGapPaint)
+        } else {
+            canvas.drawLine(0f, y, width.toFloat(), y, pageDividerPaint)
+        }
+    }
+
+    private fun drawVerticalPageSeparator(canvas: Canvas, x: Float, pageWidth: Float) {
+        if (pageLayout.displayMode == PageDisplayMode.Split) {
+            val halfGap = (splitPageGapPx(pageWidth) / 2f)
+            canvas.drawRect(x - halfGap, 0f, x + halfGap, height.toFloat(), pageGapPaint)
+        } else {
+            canvas.drawLine(x, 0f, x, height.toFloat(), pageDividerPaint)
+        }
+    }
+
+    private fun splitPageGapPx(pageExtent: Float): Float =
+        min(SplitPageGapDp * resources.displayMetrics.density, pageExtent / 4f)
+
+    private fun drawPageOutlines(canvas: Canvas) {
+        val pageCount = pageLayout.normalizedPageCount
+        val direction = pageLayout.scrollDirection
+        if (pageCount <= 1 || direction == null || pageLayout.displayMode != PageDisplayMode.Split) {
+            canvas.drawRect(0f, 0f, width.toFloat(), height.toFloat(), canvasBorderPaint)
+            return
+        }
+
+        drawSplitPageRects(canvas, direction, pageCount, canvasBorderPaint)
+    }
+
+    private fun drawSplitPageRects(
+        canvas: Canvas,
+        direction: PageScrollDirection,
+        pageCount: Int,
+        paint: Paint,
+    ) {
+        when (direction) {
+            PageScrollDirection.Vertical -> {
+                val pageHeight = height.toFloat() / pageCount
+                val halfGap = splitPageGapPx(pageHeight) / 2f
+                for (pageIndex in 0 until pageCount) {
+                    val top = pageHeight * pageIndex + if (pageIndex == 0) 0f else halfGap
+                    val bottom = pageHeight * (pageIndex + 1) - if (pageIndex == pageCount - 1) 0f else halfGap
+                    canvas.drawRect(0f, top, width.toFloat(), bottom, paint)
+                }
+            }
+
+            PageScrollDirection.Horizontal -> {
+                val pageWidth = width.toFloat() / pageCount
+                val halfGap = splitPageGapPx(pageWidth) / 2f
+                for (pageIndex in 0 until pageCount) {
+                    val left = pageWidth * pageIndex + if (pageIndex == 0) 0f else halfGap
+                    val right = pageWidth * (pageIndex + 1) - if (pageIndex == pageCount - 1) 0f else halfGap
+                    canvas.drawRect(left, 0f, right, height.toFloat(), paint)
                 }
             }
         }
@@ -668,7 +739,37 @@ internal class InkCanvasView(context: Context) : View(context) {
         (y - canvasOffsetY) / zoomScale
 
     private fun isPointInsideCanvas(x: Float, y: Float): Boolean =
-        x in 0f..width.toFloat() && y in 0f..height.toFloat()
+        x in 0f..width.toFloat() &&
+            y in 0f..height.toFloat() &&
+            !isPointInsideSplitPageGap(x, y)
+
+    private fun isPointInsideSplitPageGap(x: Float, y: Float): Boolean {
+        if (pageLayout.displayMode != PageDisplayMode.Split) return false
+
+        val pageCount = pageLayout.normalizedPageCount
+        val direction = pageLayout.scrollDirection ?: return false
+        if (pageCount <= 1) return false
+
+        return when (direction) {
+            PageScrollDirection.Vertical -> {
+                val pageHeight = height.toFloat() / pageCount
+                isCoordinateInsideSplitPageGap(y, pageHeight, pageCount)
+            }
+
+            PageScrollDirection.Horizontal -> {
+                val pageWidth = width.toFloat() / pageCount
+                isCoordinateInsideSplitPageGap(x, pageWidth, pageCount)
+            }
+        }
+    }
+
+    private fun isCoordinateInsideSplitPageGap(coordinate: Float, pageExtent: Float, pageCount: Int): Boolean {
+        val halfGap = splitPageGapPx(pageExtent) / 2f
+        for (pageIndex in 1 until pageCount) {
+            if (abs(coordinate - (pageExtent * pageIndex)) <= halfGap) return true
+        }
+        return false
+    }
 
     private fun isStylusStrokeActive(): Boolean =
         activeStroke != null &&
@@ -683,3 +784,4 @@ private const val MinCanvasZoomScale = 0.5f
 private const val MaxCanvasZoomScale = 4f
 private const val MinTransformSpan = 16f
 private const val ZoomStateEpsilon = 0.001f
+private const val SplitPageGapDp = 12f

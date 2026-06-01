@@ -26,6 +26,23 @@ internal fun Context.readHwdnDocument(uri: Uri): HwdnDocument {
     return parseHwdnPackage(bytes, displayName).copy(sourceUri = uri)
 }
 
+internal fun Context.readHwdnSpecVersion(uri: Uri): String? {
+    val inputStream = contentResolver.openInputStream(uri) ?: return null
+
+    ZipInputStream(inputStream).use { zipInput ->
+        while (true) {
+            val entry = zipInput.nextEntry ?: return null
+            try {
+                if (!entry.isDirectory && entry.name == "manifest.json") {
+                    return JSONObject(zipInput.readCurrentEntryText()).optStringOrNull("formatVersion")
+                }
+            } finally {
+                zipInput.closeEntry()
+            }
+        }
+    }
+}
+
 internal fun Context.displayNameFor(uri: Uri): String? =
     contentResolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)?.use { cursor ->
         val displayNameIndex = cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME)
@@ -73,6 +90,7 @@ internal fun parseHwdnPackage(bytes: ByteArray, fallbackFileName: String?): Hwdn
     return HwdnDocument(
         fileName = fileName,
         strokes = strokes,
+        hwdnSpecVersion = manifestJson?.optStringOrNull("formatVersion"),
         pageLayout = canvas.optJSONObject("genericNotesPageLayout").toNotePageLayout(),
         interpretation = canvas.optJSONObject("interpretation")?.toHwdnInterpretation(),
     )

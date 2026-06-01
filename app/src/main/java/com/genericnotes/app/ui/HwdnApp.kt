@@ -13,6 +13,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.LocalContext
 import com.genericnotes.app.hwdn.HwdnDocument
+import com.genericnotes.app.hwdn.HwdnFormatVersion
 import com.genericnotes.app.hwdn.HwdnOpenMimeTypes
 import com.genericnotes.app.hwdn.forgetRecentHwdnFile
 import com.genericnotes.app.hwdn.loadRecentHwdnFiles
@@ -47,8 +48,8 @@ internal fun HwdnApp() {
         }
     }
 
-    fun rememberRecentFile(uri: Uri, displayName: String) {
-        context.rememberRecentHwdnFile(uri, displayName)
+    fun rememberRecentFile(uri: Uri, displayName: String, hwdnSpecVersion: String?) {
+        context.rememberRecentHwdnFile(uri, displayName, hwdnSpecVersion)
         refreshRecentFiles()
     }
 
@@ -68,7 +69,7 @@ internal fun HwdnApp() {
                 )
             }
 
-            rememberRecentFile(uri, document.fileName)
+            rememberRecentFile(uri, document.fileName, document.hwdnSpecVersion)
             initialDocument = document
             isEditorOpen = true
         }.onFailure {
@@ -107,7 +108,7 @@ internal fun HwdnApp() {
                     uri = uri,
                     permissionFlags = Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION,
                 )
-                rememberRecentFile(uri, documentName)
+                rememberRecentFile(uri, documentName, HwdnFormatVersion)
             },
         )
     } else if (isSettingsOpen) {
@@ -130,6 +131,10 @@ internal fun HwdnApp() {
             recentFiles = recentFiles,
             onOpenRecent = { recentFile ->
                 openDocumentUri(recentFile.uri, persistPermission = false)
+            },
+            onRemoveRecent = { recentFile ->
+                context.forgetRecentHwdnFile(recentFile.uri)
+                refreshRecentFiles()
             },
             onOpenSettings = { isSettingsOpen = true },
             accentColor = appAestheticColor.color,
