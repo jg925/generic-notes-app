@@ -5,7 +5,11 @@ import android.net.Uri
 import android.provider.OpenableColumns
 import com.genericnotes.app.canvas.DrawingTool
 import com.genericnotes.app.canvas.InkStroke
+import com.genericnotes.app.canvas.NotePageLayout
+import com.genericnotes.app.canvas.PageScrollDirection
 import com.genericnotes.app.canvas.drawingToolFromSerializedName
+import com.genericnotes.app.canvas.pageDisplayModeFromSerializedName
+import com.genericnotes.app.canvas.pageScrollDirectionFromSerializedName
 import java.io.ByteArrayInputStream
 import java.io.ByteArrayOutputStream
 import java.time.Instant
@@ -20,6 +24,23 @@ internal fun Context.readHwdnDocument(uri: Uri): HwdnDocument {
     } ?: error("Unable to open .hwdn file.")
 
     return parseHwdnPackage(bytes, displayName).copy(sourceUri = uri)
+}
+
+internal fun Context.readHwdnSpecVersion(uri: Uri): String? {
+    val inputStream = contentResolver.openInputStream(uri) ?: return null
+
+    ZipInputStream(inputStream).use { zipInput ->
+        while (true) {
+            val entry = zipInput.nextEntry ?: return null
+            try {
+                if (!entry.isDirectory && entry.name == "manifest.json") {
+                    return JSONObject(zipInput.readCurrentEntryText()).optStringOrNull("formatVersion")
+                }
+            } finally {
+                zipInput.closeEntry()
+            }
+        }
+    }
 }
 
 internal fun Context.displayNameFor(uri: Uri): String? =
@@ -69,6 +90,8 @@ internal fun parseHwdnPackage(bytes: ByteArray, fallbackFileName: String?): Hwdn
     return HwdnDocument(
         fileName = fileName,
         strokes = strokes,
+        hwdnSpecVersion = manifestJson?.optStringOrNull("formatVersion"),
+        pageLayout = canvas.optJSONObject("genericNotesPageLayout").toNotePageLayout(),
         interpretation = canvas.optJSONObject("interpretation")?.toHwdnInterpretation(),
     )
 }
@@ -113,6 +136,27 @@ private fun JSONObject.toInkStroke(): InkStroke? {
     return stroke.takeIf { it.size > 0 }
 }
 
+private fun JSONObject?.toNotePageLayout(): NotePageLayout {
+    if (this == null) return NotePageLayout()
+
+    val pageCount = optInt("pageCount", 1).coerceAtLeast(1)
+    val parsedDirection = pageScrollDirectionFromSerializedName(optStringOrNull("scrollDirection"))
+    val scrollDirection = parsedDirection ?: if (pageCount > 1) {
+        PageScrollDirection.Vertical
+    } else {
+        null
+    }
+    val pageSize = optJSONObject("pageSize")
+
+    return NotePageLayout(
+        pageCount = pageCount,
+        scrollDirection = scrollDirection,
+        displayMode = pageDisplayModeFromSerializedName(optStringOrNull("displayMode")),
+        pageWidthPx = pageSize?.optPositiveInt("width"),
+        pageHeightPx = pageSize?.optPositiveInt("height"),
+    )
+}
+
 private fun JSONObject.toHwdnInterpretation(): HwdnInterpretation? {
     val plainText = optStringOrNull("plainText") ?: return null
     val generatedAt = optStringOrNull("generatedAt")?.let { rawGeneratedAt ->
@@ -129,6 +173,11 @@ private fun JSONObject.toHwdnInterpretation(): HwdnInterpretation? {
 
 private fun JSONObject.optStringOrNull(name: String): String? =
     optString(name).trim().takeIf { it.isNotBlank() }
+
+private fun JSONObject.optPositiveInt(name: String): Int? {
+    val value = optInt(name, 0)
+    return value.takeIf { it > 0 }
+}
 
 private fun JSONObject.optFiniteFloat(name: String): Float? {
     val value = optDouble(name, Double.NaN)

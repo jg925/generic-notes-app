@@ -307,6 +307,45 @@ internal val InfoIcon: ImageVector =
         }
     }.build()
 
+internal val AddPageIcon: ImageVector =
+    ImageVector.Builder(
+        name = "AddPage",
+        defaultWidth = 24.dp,
+        defaultHeight = 24.dp,
+        viewportWidth = 24f,
+        viewportHeight = 24f,
+    ).apply {
+        path(fill = SolidColor(Color.Black)) {
+            moveTo(4.0f, 3.0f)
+            lineTo(14.0f, 3.0f)
+            lineTo(19.0f, 8.0f)
+            lineTo(19.0f, 13.0f)
+            lineTo(17.0f, 13.0f)
+            lineTo(17.0f, 9.0f)
+            lineTo(13.0f, 9.0f)
+            lineTo(13.0f, 5.0f)
+            lineTo(6.0f, 5.0f)
+            lineTo(6.0f, 19.0f)
+            lineTo(12.0f, 19.0f)
+            lineTo(12.0f, 21.0f)
+            lineTo(4.0f, 21.0f)
+            close()
+            moveTo(17.0f, 15.0f)
+            lineTo(19.0f, 15.0f)
+            lineTo(19.0f, 18.0f)
+            lineTo(22.0f, 18.0f)
+            lineTo(22.0f, 20.0f)
+            lineTo(19.0f, 20.0f)
+            lineTo(19.0f, 23.0f)
+            lineTo(17.0f, 23.0f)
+            lineTo(17.0f, 20.0f)
+            lineTo(14.0f, 20.0f)
+            lineTo(14.0f, 18.0f)
+            lineTo(17.0f, 18.0f)
+            close()
+        }
+    }.build()
+
 internal val SettingsIcon: ImageVector =
     ImageVector.Builder(
         name = "Settings",
@@ -370,6 +409,33 @@ internal val SettingsIcon: ImageVector =
         }
     }.build()
 
+internal val VerticalPagesIcon: ImageVector =
+    ImageVector.Builder(
+        name = "VerticalPages",
+        defaultWidth = 24.dp,
+        defaultHeight = 24.dp,
+        viewportWidth = 24f,
+        viewportHeight = 24f,
+    ).apply {
+        path(fill = SolidColor(Color.Black)) {
+            moveTo(6.0f, 2.0f)
+            lineTo(18.0f, 2.0f)
+            lineTo(18.0f, 10.0f)
+            lineTo(6.0f, 10.0f)
+            close()
+            moveTo(6.0f, 14.0f)
+            lineTo(18.0f, 14.0f)
+            lineTo(18.0f, 22.0f)
+            lineTo(6.0f, 22.0f)
+            close()
+            moveTo(11.0f, 10.0f)
+            lineTo(13.0f, 10.0f)
+            lineTo(13.0f, 14.0f)
+            lineTo(11.0f, 14.0f)
+            close()
+        }
+    }.build()
+
 internal val BackIcon: ImageVector =
     ImageVector.Builder(
         name = "Back",
@@ -388,6 +454,77 @@ internal val BackIcon: ImageVector =
             lineTo(11.6f, 16.2f)
             lineTo(10.2f, 17.6f)
             lineTo(3.6f, 11.0f)
+            close()
+        }
+    }.build()
+
+internal val HorizontalPagesIcon: ImageVector =
+    ImageVector.Builder(
+        name = "HorizontalPages",
+        defaultWidth = 24.dp,
+        defaultHeight = 24.dp,
+        viewportWidth = 24f,
+        viewportHeight = 24f,
+    ).apply {
+        path(fill = SolidColor(Color.Black)) {
+            moveTo(2.0f, 6.0f)
+            lineTo(10.0f, 6.0f)
+            lineTo(10.0f, 18.0f)
+            lineTo(2.0f, 18.0f)
+            close()
+            moveTo(14.0f, 6.0f)
+            lineTo(22.0f, 6.0f)
+            lineTo(22.0f, 18.0f)
+            lineTo(14.0f, 18.0f)
+            close()
+            moveTo(10.0f, 11.0f)
+            lineTo(14.0f, 11.0f)
+            lineTo(14.0f, 13.0f)
+            lineTo(10.0f, 13.0f)
+            close()
+        }
+    }.build()
+
+internal val SeamlessPagesIcon: ImageVector =
+    ImageVector.Builder(
+        name = "SeamlessPages",
+        defaultWidth = 24.dp,
+        defaultHeight = 24.dp,
+        viewportWidth = 24f,
+        viewportHeight = 24f,
+    ).apply {
+        path(fill = SolidColor(Color.Black)) {
+            moveTo(5.0f, 3.0f)
+            lineTo(19.0f, 3.0f)
+            lineTo(19.0f, 21.0f)
+            lineTo(5.0f, 21.0f)
+            close()
+            moveTo(7.0f, 5.0f)
+            lineTo(7.0f, 19.0f)
+            lineTo(17.0f, 19.0f)
+            lineTo(17.0f, 5.0f)
+            close()
+        }
+    }.build()
+
+internal val SplitPagesIcon: ImageVector =
+    ImageVector.Builder(
+        name = "SplitPages",
+        defaultWidth = 24.dp,
+        defaultHeight = 24.dp,
+        viewportWidth = 24f,
+        viewportHeight = 24f,
+    ).apply {
+        path(fill = SolidColor(Color.Black)) {
+            moveTo(5.0f, 3.0f)
+            lineTo(19.0f, 3.0f)
+            lineTo(19.0f, 10.5f)
+            lineTo(5.0f, 10.5f)
+            close()
+            moveTo(5.0f, 13.5f)
+            lineTo(19.0f, 13.5f)
+            lineTo(19.0f, 21.0f)
+            lineTo(5.0f, 21.0f)
             close()
         }
     }.build()

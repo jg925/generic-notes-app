@@ -12,6 +12,7 @@ internal data class RecentHwdnFile(
     val uri: Uri,
     val displayName: String,
     val locationHint: String,
+    val hwdnSpecVersion: String?,
     val openedAtMillis: Long,
 )
 
@@ -21,7 +22,7 @@ private const val RecentFilesKey = "files"
 internal fun Context.loadRecentHwdnFiles(): List<RecentHwdnFile> {
     val rawRecentFiles = recentFilesPreferences().getString(RecentFilesKey, null) ?: return emptyList()
 
-    return runCatching {
+    val recentFiles = runCatching {
         val recentFiles = JSONArray(rawRecentFiles)
         buildList {
             for (index in 0 until recentFiles.length()) {
@@ -32,18 +33,36 @@ internal fun Context.loadRecentHwdnFiles(): List<RecentHwdnFile> {
         .distinctBy { it.uri }
         .sortedByDescending { it.openedAtMillis }
         .take(MaxRecentHwdnFiles)
+
+    return recentFiles.map { recentFile ->
+        if (recentFile.hwdnSpecVersion != null) {
+            recentFile
+        } else {
+            recentFile.copy(
+                hwdnSpecVersion = runCatching { readHwdnSpecVersion(recentFile.uri) }.getOrNull(),
+            )
+        }
+    }
 }
 
-internal fun Context.rememberRecentHwdnFile(uri: Uri, fallbackDisplayName: String) {
+internal fun Context.rememberRecentHwdnFile(
+    uri: Uri,
+    fallbackDisplayName: String,
+    hwdnSpecVersion: String?,
+) {
+    val existingRecentFiles = loadRecentHwdnFiles()
     val displayName = displayNameFor(uri)
         ?: fallbackDisplayName.toHwdnDisplayName()
+    val rememberedSpecVersion = hwdnSpecVersion
+        ?: existingRecentFiles.firstOrNull { it.uri == uri }?.hwdnSpecVersion
     val recentFile = RecentHwdnFile(
         uri = uri,
         displayName = displayName,
         locationHint = storageLocationHintFor(uri),
+        hwdnSpecVersion = rememberedSpecVersion,
         openedAtMillis = System.currentTimeMillis(),
     )
-    val recentFiles = listOf(recentFile) + loadRecentHwdnFiles().filterNot { it.uri == uri }
+    val recentFiles = listOf(recentFile) + existingRecentFiles.filterNot { it.uri == uri }
 
     saveRecentHwdnFiles(recentFiles.take(MaxRecentHwdnFiles))
 }
@@ -73,6 +92,9 @@ private fun RecentHwdnFile.toJson(): JSONObject =
         .put("uri", uri.toString())
         .put("displayName", displayName)
         .put("locationHint", locationHint)
+        .apply {
+            hwdnSpecVersion?.let { put("hwdnSpecVersion", it) }
+        }
         .put("openedAtMillis", openedAtMillis)
 
 private fun JSONObject.toRecentHwdnFile(): RecentHwdnFile? {
@@ -84,9 +106,13 @@ private fun JSONObject.toRecentHwdnFile(): RecentHwdnFile? {
         uri = uri,
         displayName = displayName,
         locationHint = locationHint,
+        hwdnSpecVersion = optStringOrNull("hwdnSpecVersion"),
         openedAtMillis = optLong("openedAtMillis", 0L),
     )
 }
+
+private fun JSONObject.optStringOrNull(name: String): String? =
+    optString(name).trim().takeIf { it.isNotBlank() }
 
 private fun String.toHwdnDisplayName(): String {
     val trimmedName = trim().ifBlank { "Untitled Note" }

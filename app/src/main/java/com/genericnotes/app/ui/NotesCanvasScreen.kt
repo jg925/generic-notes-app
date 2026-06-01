@@ -5,17 +5,24 @@ import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.IconButtonDefaults
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -26,10 +33,16 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
+import com.genericnotes.app.canvas.DrawingTool
 import com.genericnotes.app.canvas.InkCanvasView
+import com.genericnotes.app.canvas.NotePageLayout
+import com.genericnotes.app.canvas.PageDisplayMode
+import com.genericnotes.app.canvas.PageScrollDirection
 import com.genericnotes.app.hwdn.HwdnDocument
 import com.genericnotes.app.hwdn.HwdnInterpretation
 import com.genericnotes.app.hwdn.HwdnMimeType
@@ -41,8 +54,8 @@ import com.genericnotes.app.hwdn.withoutHwdnExtension
 import com.genericnotes.app.settings.AppCanvasSettings
 import com.genericnotes.app.settings.loadAppCanvasSettings
 import com.genericnotes.app.settings.saveAppCanvasSettings
-import com.genericnotes.app.ui.dictation.DictationUnderstanding
 import com.genericnotes.app.ui.dictation.DictationPreviewSheet
+import com.genericnotes.app.ui.dictation.DictationUnderstanding
 import com.genericnotes.app.ui.dictation.rememberDictationController
 
 @Composable
@@ -58,6 +71,22 @@ internal fun NotesCanvasScreen(
     var selectedTool by remember(context) { mutableStateOf(appCanvasSettings.selectedTool) }
     var ignoreTouchInput by remember(context) { mutableStateOf(appCanvasSettings.ignoreTouchInput) }
     val shouldIgnoreTouchInput = supportsTrueStylusInput && ignoreTouchInput
+    val initialPageLayout = initialDocument?.pageLayout ?: NotePageLayout()
+    var pageCount by remember(initialDocument) {
+        mutableStateOf(initialPageLayout.normalizedPageCount)
+    }
+    var pageScrollDirection by remember(initialDocument) {
+        mutableStateOf(initialPageLayout.scrollDirection)
+    }
+    var preferredPageDirection by remember(initialDocument) {
+        mutableStateOf(initialPageLayout.scrollDirection ?: PageScrollDirection.Vertical)
+    }
+    var pageDisplayMode by remember(initialDocument) {
+        mutableStateOf(initialPageLayout.displayMode)
+    }
+    val verticalScrollState = rememberScrollState()
+    val horizontalScrollState = rememberScrollState()
+    var previousPageCount by remember(initialDocument) { mutableStateOf(pageCount) }
     var fileName by remember(initialDocument) {
         mutableStateOf(initialDocument?.fileName?.withoutHwdnExtension()?.take(MaxFileNameLength) ?: "")
     }
@@ -108,6 +137,13 @@ internal fun NotesCanvasScreen(
         }
     }
 
+    fun currentPageLayout(): NotePageLayout =
+        NotePageLayout(
+            pageCount = pageCount,
+            scrollDirection = pageScrollDirection,
+            displayMode = pageDisplayMode,
+        )
+
     fun exportCurrentDocument(interpretation: HwdnInterpretation?): Pair<String, ByteArray>? {
         val canvasView = inkCanvasView ?: return null
         val hwdnFileName = fileName.toHwdnFileName()
@@ -116,6 +152,7 @@ internal fun NotesCanvasScreen(
             fileName = hwdnFileName,
             canvasWidth = canvasView.width,
             canvasHeight = canvasView.height,
+            pageLayout = currentPageLayout(),
             interpretation = interpretation,
         )
         return hwdnFileName to documentBytes
@@ -130,7 +167,7 @@ internal fun NotesCanvasScreen(
         saveDocumentLauncher.launch(hwdnFileName)
     }
 
-    fun writeExistingDocument(uri: Uri, interpretation: HwdnInterpretation) {
+    fun writeExistingDocument(uri: Uri, interpretation: HwdnInterpretation?) {
         val (hwdnFileName, documentBytes) = exportCurrentDocument(interpretation) ?: return
 
         runCatching {
@@ -138,9 +175,19 @@ internal fun NotesCanvasScreen(
         }.onSuccess {
             currentDocumentUri = uri
             onDocumentSaved(uri, hwdnFileName)
-            Toast.makeText(context, "Saved interpretation to $hwdnFileName", Toast.LENGTH_SHORT).show()
+            Toast.makeText(context, "Saved $hwdnFileName", Toast.LENGTH_SHORT).show()
         }.onFailure {
             Toast.makeText(context, "Could not update opened file", Toast.LENGTH_SHORT).show()
+            saveAsNewDocument(interpretation)
+        }
+    }
+
+    fun saveCurrentDocument() {
+        val interpretation = dictationState.savedUnderstanding?.toHwdnInterpretation()
+        val targetUri = currentDocumentUri
+        if (targetUri != null) {
+            writeExistingDocument(targetUri, interpretation)
+        } else {
             saveAsNewDocument(interpretation)
         }
     }
@@ -155,34 +202,94 @@ internal fun NotesCanvasScreen(
         }
     }
 
-    Box(
+    LaunchedEffect(pageCount, pageScrollDirection) {
+        if (pageCount > previousPageCount) {
+            when (pageScrollDirection ?: preferredPageDirection) {
+                PageScrollDirection.Vertical -> verticalScrollState.animateScrollTo(verticalScrollState.maxValue)
+                PageScrollDirection.Horizontal -> horizontalScrollState.animateScrollTo(horizontalScrollState.maxValue)
+            }
+        }
+        previousPageCount = pageCount
+    }
+
+    BoxWithConstraints(
         modifier = Modifier
             .fillMaxSize()
-            .background(Color.White)
+            .background(Color(0xFFE9E9E9))
     ) {
-        AndroidView(
-            factory = { viewContext ->
-                InkCanvasView(viewContext).also { canvasView ->
-                    canvasView.onCanUndoChanged = { canUndo = it }
-                    canvasView.onCanResetZoomChanged = { canResetZoom = it }
-                    canvasView.onCanRedoChanged = { canRedo = it }
-                    initialDocument?.strokes?.let(canvasView::loadStrokes)
-                    inkCanvasView = canvasView
-                }
-            },
-            update = { inkCanvas ->
-                inkCanvas.isLocked = isLocked
-                inkCanvas.selectedTool = selectedTool
-                inkCanvas.ignoreTouchInput = shouldIgnoreTouchInput
-            },
-            modifier = Modifier.fillMaxSize(),
-        )
+        val density = LocalDensity.current
+        val savedPageWidth = initialPageLayout.pageWidthPx
+            ?.takeIf { it > 0 }
+            ?.let { with(density) { it.toDp() } }
+        val savedPageHeight = initialPageLayout.pageHeightPx
+            ?.takeIf { it > 0 }
+            ?.let { with(density) { it.toDp() } }
+        val pageWidth = savedPageWidth ?: maxWidth
+        val pageHeight = savedPageHeight ?: maxHeight
+        val renderedDirection = pageScrollDirection ?: preferredPageDirection
+        val canvasWidth = if (renderedDirection == PageScrollDirection.Horizontal) {
+            pageWidth * pageCount.toFloat()
+        } else {
+            pageWidth
+        }
+        val canvasHeight = if (renderedDirection == PageScrollDirection.Vertical) {
+            pageHeight * pageCount.toFloat()
+        } else {
+            pageHeight
+        }
+        val currentPage = when (renderedDirection) {
+            PageScrollDirection.Vertical -> currentPageNumber(
+                scrollOffsetPx = verticalScrollState.value,
+                pageExtentPx = with(density) { pageHeight.toPx() },
+                viewportExtentPx = with(density) { maxHeight.toPx() },
+                pageCount = pageCount,
+            )
+
+            PageScrollDirection.Horizontal -> currentPageNumber(
+                scrollOffsetPx = horizontalScrollState.value,
+                pageExtentPx = with(density) { pageWidth.toPx() },
+                viewportExtentPx = with(density) { maxWidth.toPx() },
+                pageCount = pageCount,
+            )
+        }
+        val renderedPageLayout = currentPageLayout()
+
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .then(
+                    when (renderedDirection) {
+                        PageScrollDirection.Vertical -> Modifier.verticalScroll(verticalScrollState)
+                        PageScrollDirection.Horizontal -> Modifier.horizontalScroll(horizontalScrollState)
+                    },
+                ),
+        ) {
+            AndroidView(
+                factory = { viewContext ->
+                    InkCanvasView(viewContext).also { canvasView ->
+                        canvasView.pageLayout = renderedPageLayout
+                        canvasView.onCanUndoChanged = { canUndo = it }
+                        canvasView.onCanResetZoomChanged = { canResetZoom = it }
+                        canvasView.onCanRedoChanged = { canRedo = it }
+                        initialDocument?.strokes?.let(canvasView::loadStrokes)
+                        inkCanvasView = canvasView
+                    }
+                },
+                update = { inkCanvas ->
+                    inkCanvas.isLocked = isLocked
+                    inkCanvas.selectedTool = selectedTool
+                    inkCanvas.ignoreTouchInput = shouldIgnoreTouchInput
+                    inkCanvas.pageLayout = renderedPageLayout
+                },
+                modifier = Modifier.size(width = canvasWidth, height = canvasHeight),
+            )
+        }
 
         FilePanel(
             fileName = fileName,
             onFileNameChange = { fileName = it.withoutHwdnExtension().take(MaxFileNameLength) },
             accentColor = accentColor,
-            onSave = { saveAsNewDocument() },
+            onSave = { saveCurrentDocument() },
             modifier = Modifier
                 .align(Alignment.TopStart)
                 .padding(24.dp),
@@ -232,6 +339,30 @@ internal fun NotesCanvasScreen(
         }
 
         if (!dictationState.isSheetVisible) {
+            PageControls(
+                currentPage = currentPage,
+                pageCount = pageCount,
+                preferredDirection = preferredPageDirection,
+                lockedDirection = pageScrollDirection,
+                displayMode = pageDisplayMode,
+                accentColor = accentColor,
+                onPreferredDirectionChange = { direction ->
+                    if (pageScrollDirection == null) {
+                        preferredPageDirection = direction
+                    }
+                },
+                onDisplayModeChange = { pageDisplayMode = it },
+                onAddPage = {
+                    if (pageScrollDirection == null) {
+                        pageScrollDirection = preferredPageDirection
+                    }
+                    pageCount += 1
+                },
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .padding(bottom = 24.dp),
+            )
+
             InterpretationActionButton(
                 accentColor = accentColor,
                 onClick = dictationController.openSheet,
@@ -282,6 +413,124 @@ private fun DictationUnderstanding.toHwdnInterpretation(): HwdnInterpretation =
         plainText = plainText,
         generatedAt = generatedAt,
     )
+
+private fun currentPageNumber(
+    scrollOffsetPx: Int,
+    pageExtentPx: Float,
+    viewportExtentPx: Float,
+    pageCount: Int,
+): Int {
+    if (pageCount <= 1 || pageExtentPx <= 0f) return 1
+
+    val centeredOffsetPx = scrollOffsetPx + (viewportExtentPx / 2f)
+    return ((centeredOffsetPx / pageExtentPx).toInt() + 1).coerceIn(1, pageCount)
+}
+
+@Composable
+private fun PageControls(
+    currentPage: Int,
+    pageCount: Int,
+    preferredDirection: PageScrollDirection,
+    lockedDirection: PageScrollDirection?,
+    displayMode: PageDisplayMode,
+    accentColor: Color,
+    onPreferredDirectionChange: (PageScrollDirection) -> Unit,
+    onDisplayModeChange: (PageDisplayMode) -> Unit,
+    onAddPage: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val selectedDirection = lockedDirection ?: preferredDirection
+    val isDirectionLocked = lockedDirection != null
+
+    Surface(
+        modifier = modifier,
+        color = Color(0xFFF4F4F4),
+        contentColor = accentColor,
+        shape = RoundedCornerShape(8.dp),
+        tonalElevation = 2.dp,
+        shadowElevation = 2.dp,
+    ) {
+        Row(
+            modifier = Modifier.padding(start = 12.dp, top = 6.dp, end = 6.dp, bottom = 6.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                text = "$currentPage / $pageCount",
+                color = accentColor,
+                modifier = Modifier.padding(end = 8.dp),
+            )
+            PageControlButton(
+                icon = VerticalPagesIcon,
+                contentDescription = "vertical pages",
+                selected = selectedDirection == PageScrollDirection.Vertical,
+                enabled = !isDirectionLocked,
+                accentColor = accentColor,
+                onClick = { onPreferredDirectionChange(PageScrollDirection.Vertical) },
+            )
+            PageControlButton(
+                icon = HorizontalPagesIcon,
+                contentDescription = "horizontal pages",
+                selected = selectedDirection == PageScrollDirection.Horizontal,
+                enabled = !isDirectionLocked,
+                accentColor = accentColor,
+                onClick = { onPreferredDirectionChange(PageScrollDirection.Horizontal) },
+            )
+            PageControlButton(
+                icon = SeamlessPagesIcon,
+                contentDescription = "seamless pages",
+                selected = displayMode == PageDisplayMode.Seamless,
+                accentColor = accentColor,
+                onClick = { onDisplayModeChange(PageDisplayMode.Seamless) },
+            )
+            PageControlButton(
+                icon = SplitPagesIcon,
+                contentDescription = "split pages",
+                selected = displayMode == PageDisplayMode.Split,
+                accentColor = accentColor,
+                onClick = { onDisplayModeChange(PageDisplayMode.Split) },
+            )
+            PageControlButton(
+                icon = AddPageIcon,
+                contentDescription = "add page",
+                selected = false,
+                accentColor = accentColor,
+                onClick = onAddPage,
+            )
+        }
+    }
+}
+
+@Composable
+private fun PageControlButton(
+    icon: ImageVector,
+    contentDescription: String,
+    selected: Boolean,
+    onClick: () -> Unit,
+    accentColor: Color,
+    enabled: Boolean = true,
+) {
+    StylusHoverTooltipBox(
+        tooltipText = contentDescription,
+        containerColor = accentColor,
+    ) {
+        IconButton(
+            onClick = onClick,
+            enabled = enabled,
+            modifier = Modifier.size(44.dp),
+            colors = IconButtonDefaults.iconButtonColors(
+                containerColor = if (selected) accentColor else Color.Transparent,
+                contentColor = if (selected) Color.White else accentColor,
+                disabledContentColor = accentColor.copy(alpha = 0.38f),
+            ),
+        ) {
+            Icon(
+                imageVector = icon,
+                contentDescription = contentDescription,
+                modifier = Modifier.size(22.dp),
+            )
+        }
+    }
+}
 
 @Composable
 private fun InterpretationActionButton(

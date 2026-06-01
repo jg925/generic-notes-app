@@ -1,6 +1,8 @@
 package com.genericnotes.app.ui
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -13,6 +15,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Icon
@@ -20,7 +23,9 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -29,6 +34,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.genericnotes.app.hwdn.RecentHwdnFile
@@ -39,10 +45,12 @@ internal fun OpenOrCreateScreen(
     onCreateNew: () -> Unit,
     recentFiles: List<RecentHwdnFile>,
     onOpenRecent: (RecentHwdnFile) -> Unit,
+    onRemoveRecent: (RecentHwdnFile) -> Unit,
     onOpenSettings: () -> Unit,
     accentColor: Color,
 ) {
     var showAppInfo by remember { mutableStateOf(false) }
+    var recentFilePendingRemoval by remember { mutableStateOf<RecentHwdnFile?>(null) }
 
     Box(
         modifier = Modifier
@@ -125,6 +133,7 @@ internal fun OpenOrCreateScreen(
                 RecentFilesSection(
                     recentFiles = recentFiles,
                     onOpenRecent = onOpenRecent,
+                    onRequestRemoveRecent = { recentFilePendingRemoval = it },
                     accentColor = accentColor,
                 )
             }
@@ -134,12 +143,25 @@ internal fun OpenOrCreateScreen(
     if (showAppInfo) {
         AppInfoDialog(onDismissRequest = { showAppInfo = false })
     }
+
+    recentFilePendingRemoval?.let { recentFile ->
+        RemoveRecentFileDialog(
+            recentFile = recentFile,
+            accentColor = accentColor,
+            onConfirm = {
+                onRemoveRecent(recentFile)
+                recentFilePendingRemoval = null
+            },
+            onDismiss = { recentFilePendingRemoval = null },
+        )
+    }
 }
 
 @Composable
 private fun RecentFilesSection(
     recentFiles: List<RecentHwdnFile>,
     onOpenRecent: (RecentHwdnFile) -> Unit,
+    onRequestRemoveRecent: (RecentHwdnFile) -> Unit,
     accentColor: Color,
 ) {
     Column(
@@ -156,6 +178,7 @@ private fun RecentFilesSection(
             RecentFileButton(
                 recentFile = recentFile,
                 onClick = { onOpenRecent(recentFile) },
+                onLongClick = { onRequestRemoveRecent(recentFile) },
                 accentColor = accentColor,
             )
         }
@@ -166,17 +189,27 @@ private fun RecentFilesSection(
 private fun RecentFileButton(
     recentFile: RecentHwdnFile,
     onClick: () -> Unit,
+    onLongClick: () -> Unit,
     accentColor: Color,
 ) {
-    OutlinedButton(
-        onClick = onClick,
-        modifier = Modifier.fillMaxWidth(),
+    Surface(
+        modifier = Modifier
+            .fillMaxWidth()
+            .pointerInput(recentFile.uri) {
+                detectTapGestures(
+                    onTap = { onClick() },
+                    onLongPress = { onLongClick() },
+                )
+            },
         shape = RoundedCornerShape(8.dp),
-        colors = ButtonDefaults.outlinedButtonColors(contentColor = accentColor),
-        contentPadding = PaddingValues(horizontal = 14.dp, vertical = 10.dp),
+        color = Color.Transparent,
+        contentColor = accentColor,
+        border = BorderStroke(1.dp, accentColor.copy(alpha = 0.5f)),
     ) {
         Column(
-            modifier = Modifier.fillMaxWidth(),
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(PaddingValues(horizontal = 14.dp, vertical = 10.dp)),
             horizontalAlignment = Alignment.Start,
         ) {
             Text(
@@ -188,7 +221,7 @@ private fun RecentFileButton(
                 modifier = Modifier.fillMaxWidth(),
             )
             Text(
-                text = recentFile.locationHint,
+                text = recentFile.versionedLocationHint(),
                 color = Color(0xFF666666),
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
@@ -197,4 +230,44 @@ private fun RecentFileButton(
             )
         }
     }
+}
+
+@Composable
+private fun RemoveRecentFileDialog(
+    recentFile: RecentHwdnFile,
+    accentColor: Color,
+    onConfirm: () -> Unit,
+    onDismiss: () -> Unit,
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Remove recently opened?") },
+        text = {
+            Text(
+                "Remove ${recentFile.displayName} from the recent list. The file will not be deleted.",
+            )
+        },
+        confirmButton = {
+            Button(
+                onClick = onConfirm,
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = accentColor,
+                    contentColor = Color.White,
+                ),
+                shape = RoundedCornerShape(8.dp),
+            ) {
+                Text("Remove")
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("Cancel")
+            }
+        },
+    )
+}
+
+private fun RecentHwdnFile.versionedLocationHint(): String {
+    val specVersion = hwdnSpecVersion?.let { "HWDN spec v$it" } ?: "HWDN spec unknown"
+    return "$specVersion - $locationHint"
 }

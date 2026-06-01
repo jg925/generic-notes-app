@@ -3,6 +3,9 @@ package com.genericnotes.app.hwdn
 import com.genericnotes.app.canvas.DrawingTool
 import com.genericnotes.app.canvas.EraserStrokeWidth
 import com.genericnotes.app.canvas.InkStroke
+import com.genericnotes.app.canvas.NotePageLayout
+import com.genericnotes.app.canvas.PageDisplayMode
+import com.genericnotes.app.canvas.PageScrollDirection
 import com.genericnotes.app.canvas.PenNominalStrokeWidth
 import com.genericnotes.app.canvas.serializedName
 import java.io.ByteArrayOutputStream
@@ -18,6 +21,7 @@ internal fun exportHwdnPackage(
     fileName: String,
     canvasWidth: Int,
     canvasHeight: Int,
+    pageLayout: NotePageLayout = NotePageLayout(),
     interpretation: HwdnInterpretation? = null,
 ): ByteArray {
     val exportedAt = Instant.now()
@@ -34,12 +38,14 @@ internal fun exportHwdnPackage(
         timestamp = exportedAt,
         canvasWidth = canvasWidth.coerceAtLeast(1),
         canvasHeight = canvasHeight.coerceAtLeast(1),
+        pageLayout = pageLayout,
         interpretation = normalizedInterpretation,
     )
     val manifestJson = createManifestJson(
         packageId = packageId,
         fileName = fileName,
         timestamp = exportedAt,
+        includePageLayout = pageLayout.shouldSerialize(),
         includesInterpretation = normalizedInterpretation != null,
     )
 
@@ -58,6 +64,7 @@ private fun createManifestJson(
     packageId: String,
     fileName: String,
     timestamp: Instant,
+    includePageLayout: Boolean,
     includesInterpretation: Boolean,
 ): JSONObject {
     val features = JSONArray()
@@ -67,6 +74,15 @@ private fun createManifestJson(
                 .put("required", true)
                 .put("version", HwdnFormatVersion),
         )
+
+    if (includePageLayout) {
+        features.put(
+            JSONObject()
+                .put("name", "generic-notes-page-layout")
+                .put("required", false)
+                .put("version", "1"),
+        )
+    }
 
     if (includesInterpretation) {
         features.put(
@@ -102,6 +118,7 @@ private fun createNoteJson(
     timestamp: Instant,
     canvasWidth: Int,
     canvasHeight: Int,
+    pageLayout: NotePageLayout,
     interpretation: HwdnInterpretation?,
 ): JSONObject {
     val canvasSize = JSONObject()
@@ -127,6 +144,13 @@ private fun createNoteJson(
 
     interpretation?.let { canvasJson.put("interpretation", it.toJson()) }
 
+    if (pageLayout.shouldSerialize()) {
+        canvasJson.put(
+            "genericNotesPageLayout",
+            pageLayout.toJson(canvasWidth = canvasWidth, canvasHeight = canvasHeight),
+        )
+    }
+
     return JSONObject()
         .put(
             "document",
@@ -145,6 +169,41 @@ private fun createNoteJson(
                 ),
         )
         .put("canvas", canvasJson)
+}
+
+private fun NotePageLayout.shouldSerialize(): Boolean =
+    normalizedPageCount > 1 ||
+        scrollDirection != null ||
+        displayMode != PageDisplayMode.Seamless ||
+        pageWidthPx != null ||
+        pageHeightPx != null
+
+private fun NotePageLayout.toJson(canvasWidth: Int, canvasHeight: Int): JSONObject {
+    val pageCount = normalizedPageCount
+    val resolvedPageWidth = when (scrollDirection) {
+        PageScrollDirection.Horizontal -> canvasWidth / pageCount
+        PageScrollDirection.Vertical,
+        null -> canvasWidth
+    }.coerceAtLeast(1)
+    val resolvedPageHeight = when (scrollDirection) {
+        PageScrollDirection.Vertical -> canvasHeight / pageCount
+        PageScrollDirection.Horizontal,
+        null -> canvasHeight
+    }.coerceAtLeast(1)
+
+    return JSONObject()
+        .put("version", 1)
+        .put("pageCount", pageCount)
+        .put("displayMode", displayMode.serializedName)
+        .put(
+            "pageSize",
+            JSONObject()
+                .put("width", pageWidthPx?.coerceAtLeast(1) ?: resolvedPageWidth)
+                .put("height", pageHeightPx?.coerceAtLeast(1) ?: resolvedPageHeight),
+        )
+        .apply {
+            scrollDirection?.let { put("scrollDirection", it.serializedName) }
+        }
 }
 
 private fun HwdnInterpretation.toJson(): JSONObject =
