@@ -27,6 +27,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -90,9 +91,15 @@ internal fun NotesCanvasScreen(
     var fileName by remember(initialDocument) {
         mutableStateOf(initialDocument?.fileName?.withoutHwdnExtension()?.take(MaxFileNameLength) ?: "")
     }
-    var canUndo by remember(initialDocument) { mutableStateOf(initialDocument?.strokes?.isNotEmpty() == true) }
+    val undoActions = remember(initialDocument) {
+        mutableStateListOf<CanvasHistoryAction>().apply {
+            repeat(initialDocument?.strokes?.size ?: 0) {
+                add(CanvasHistoryAction.Stroke)
+            }
+        }
+    }
+    val redoActions = remember(initialDocument) { mutableStateListOf<CanvasHistoryAction>() }
     var canResetZoom by remember(initialDocument) { mutableStateOf(false) }
-    var canRedo by remember(initialDocument) { mutableStateOf(false) }
     var inkCanvasView by remember { mutableStateOf<InkCanvasView?>(null) }
     var pendingDocumentBytes by remember { mutableStateOf<ByteArray?>(null) }
     var pendingFileName by remember { mutableStateOf<String?>(null) }
@@ -143,6 +150,71 @@ internal fun NotesCanvasScreen(
             scrollDirection = pageScrollDirection,
             displayMode = pageDisplayMode,
         )
+
+    fun recordNewStrokeAction() {
+        undoActions.add(CanvasHistoryAction.Stroke)
+        redoActions.clear()
+    }
+
+    fun removePendingStrokeAction() {
+        if (undoActions.lastOrNull() == CanvasHistoryAction.Stroke) {
+            undoActions.removeAt(undoActions.lastIndex)
+        }
+    }
+
+    fun addPage() {
+        val nextScrollDirection = pageScrollDirection ?: preferredPageDirection
+        val action = CanvasHistoryAction.PageAdded(
+            beforePageCount = pageCount,
+            beforeScrollDirection = pageScrollDirection,
+            afterPageCount = pageCount + 1,
+            afterScrollDirection = nextScrollDirection,
+        )
+
+        inkCanvasView?.clearRedoHistory()
+        redoActions.clear()
+        pageScrollDirection = nextScrollDirection
+        pageCount += 1
+        undoActions.add(action)
+    }
+
+    fun undoLastAction() {
+        val action = undoActions.lastOrNull() ?: return
+        undoActions.removeAt(undoActions.lastIndex)
+
+        when (action) {
+            CanvasHistoryAction.Stroke -> {
+                if (inkCanvasView?.undoLastStroke() == true) {
+                    redoActions.add(action)
+                }
+            }
+
+            is CanvasHistoryAction.PageAdded -> {
+                pageCount = action.beforePageCount
+                pageScrollDirection = action.beforeScrollDirection
+                redoActions.add(action)
+            }
+        }
+    }
+
+    fun redoLastAction() {
+        val action = redoActions.lastOrNull() ?: return
+        redoActions.removeAt(redoActions.lastIndex)
+
+        when (action) {
+            CanvasHistoryAction.Stroke -> {
+                if (inkCanvasView?.redoLastStroke() == true) {
+                    undoActions.add(action)
+                }
+            }
+
+            is CanvasHistoryAction.PageAdded -> {
+                pageCount = action.afterPageCount
+                pageScrollDirection = action.afterScrollDirection
+                undoActions.add(action)
+            }
+        }
+    }
 
     fun exportCurrentDocument(interpretation: HwdnInterpretation?): Pair<String, ByteArray>? {
         val canvasView = inkCanvasView ?: return null
@@ -268,9 +340,9 @@ internal fun NotesCanvasScreen(
                 factory = { viewContext ->
                     InkCanvasView(viewContext).also { canvasView ->
                         canvasView.pageLayout = renderedPageLayout
-                        canvasView.onCanUndoChanged = { canUndo = it }
                         canvasView.onCanResetZoomChanged = { canResetZoom = it }
-                        canvasView.onCanRedoChanged = { canRedo = it }
+                        canvasView.onStrokeAddedToHistory = ::recordNewStrokeAction
+                        canvasView.onStrokeRemovedFromHistory = ::removePendingStrokeAction
                         initialDocument?.strokes?.let(canvasView::loadStrokes)
                         inkCanvasView = canvasView
                     }
@@ -296,25 +368,15 @@ internal fun NotesCanvasScreen(
         )
 
         NotesCanvasToolbar(
-            canUndo = canUndo,
-            canRedo = canRedo,
+            canUndo = undoActions.isNotEmpty(),
+            canRedo = redoActions.isNotEmpty(),
             canResetZoom = canResetZoom,
             selectedTool = selectedTool,
             supportsTrueStylusInput = supportsTrueStylusInput,
             ignoreTouchInput = ignoreTouchInput,
             accentColor = accentColor,
-            onUndo = {
-                inkCanvasView?.let { canvasView ->
-                    canvasView.undoLastStroke()
-                    canUndo = canvasView.canUndo
-                }
-            },
-            onRedo = {
-                inkCanvasView?.let { canvasView ->
-                    canvasView.redoLastStroke()
-                    canRedo = canvasView.canRedo
-                }
-            },
+            onUndo = ::undoLastAction,
+            onRedo = ::redoLastAction,
             onResetZoom = { inkCanvasView?.resetZoomToFullScreen() },
             onSelectTool = { selectedTool = it },
             onTogglePalmReject = { ignoreTouchInput = !ignoreTouchInput },
@@ -352,12 +414,7 @@ internal fun NotesCanvasScreen(
                     }
                 },
                 onDisplayModeChange = { pageDisplayMode = it },
-                onAddPage = {
-                    if (pageScrollDirection == null) {
-                        pageScrollDirection = preferredPageDirection
-                    }
-                    pageCount += 1
-                },
+                onAddPage = ::addPage,
                 modifier = Modifier
                     .align(Alignment.BottomCenter)
                     .padding(bottom = 24.dp),
@@ -413,6 +470,17 @@ private fun DictationUnderstanding.toHwdnInterpretation(): HwdnInterpretation =
         plainText = plainText,
         generatedAt = generatedAt,
     )
+
+private sealed interface CanvasHistoryAction {
+    object Stroke : CanvasHistoryAction
+
+    data class PageAdded(
+        val beforePageCount: Int,
+        val beforeScrollDirection: PageScrollDirection?,
+        val afterPageCount: Int,
+        val afterScrollDirection: PageScrollDirection,
+    ) : CanvasHistoryAction
+}
 
 private fun currentPageNumber(
     scrollOffsetPx: Int,

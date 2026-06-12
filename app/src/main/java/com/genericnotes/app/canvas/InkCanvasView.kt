@@ -48,6 +48,8 @@ internal class InkCanvasView(context: Context) : View(context) {
             field = value
             value?.invoke(canRedo)
         }
+    var onStrokeAddedToHistory: (() -> Unit)? = null
+    var onStrokeRemovedFromHistory: (() -> Unit)? = null
 
     val canUndo: Boolean
         get() = strokes.isNotEmpty()
@@ -121,7 +123,15 @@ internal class InkCanvasView(context: Context) : View(context) {
         inkBitmap?.recycle()
         inkBitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
         inkCanvas = Canvas(inkBitmap!!)
-        resetZoomToFullScreen()
+        if (oldWidth <= 0 || oldHeight <= 0) {
+            resetZoomToFullScreen()
+        } else {
+            setCanvasTransform(
+                scale = zoomScale,
+                offsetX = canvasOffsetX,
+                offsetY = canvasOffsetY,
+            )
+        }
         redrawAllStrokes()
     }
 
@@ -362,6 +372,13 @@ internal class InkCanvasView(context: Context) : View(context) {
         return true
     }
 
+    fun clearRedoHistory() {
+        if (redoStrokes.isEmpty()) return
+
+        redoStrokes.clear()
+        notifyHistoryChanged()
+    }
+
     private fun startStrokeFromPointer(event: MotionEvent, pointerIndex: Int) {
         if (!acceptsInputFrom(event, pointerIndex)) return
         val canvasX = viewToCanvasX(event.getX(pointerIndex))
@@ -378,6 +395,7 @@ internal class InkCanvasView(context: Context) : View(context) {
         ).also { stroke ->
             redoStrokes.clear()
             strokes.add(stroke)
+            onStrokeAddedToHistory?.invoke()
             notifyHistoryChanged()
             appendHistoricalPoints(stroke, event, pointerIndex)
             appendPoint(
@@ -664,8 +682,8 @@ internal class InkCanvasView(context: Context) : View(context) {
         activeStroke = null
         activePointerId = null
         activePointerToolType = MotionEvent.TOOL_TYPE_UNKNOWN
-        if (removeStroke && stroke != null) {
-            strokes.remove(stroke)
+        if (removeStroke && stroke != null && strokes.remove(stroke)) {
+            onStrokeRemovedFromHistory?.invoke()
             redrawAllStrokes()
             notifyHistoryChanged()
         }
