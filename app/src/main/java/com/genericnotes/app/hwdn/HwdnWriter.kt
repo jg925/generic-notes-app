@@ -6,6 +6,7 @@ import com.genericnotes.app.canvas.InkStroke
 import com.genericnotes.app.canvas.NotePageLayout
 import com.genericnotes.app.canvas.PageDisplayMode
 import com.genericnotes.app.canvas.PageScrollDirection
+import com.genericnotes.app.canvas.PageShapePrimitive
 import com.genericnotes.app.canvas.PenNominalStrokeWidth
 import com.genericnotes.app.canvas.serializedName
 import java.io.ByteArrayOutputStream
@@ -30,6 +31,7 @@ internal fun exportHwdnPackage(
     val canvasId = "canvas-${UUID.randomUUID()}"
     val title = fileName.withoutHwdnExtension().trim().ifBlank { "Untitled Note" }
     val normalizedInterpretation = interpretation?.takeIf { it.plainText.isNotBlank() }
+    val pageLayoutFeatureVersion = pageLayout.featureVersionIfSerialized()
     val noteJson = createNoteJson(
         strokes = strokes,
         documentId = documentId,
@@ -45,7 +47,7 @@ internal fun exportHwdnPackage(
         packageId = packageId,
         fileName = fileName,
         timestamp = exportedAt,
-        includePageLayout = pageLayout.shouldSerialize(),
+        pageLayoutFeatureVersion = pageLayoutFeatureVersion,
         includesInterpretation = normalizedInterpretation != null,
     )
 
@@ -64,7 +66,7 @@ private fun createManifestJson(
     packageId: String,
     fileName: String,
     timestamp: Instant,
-    includePageLayout: Boolean,
+    pageLayoutFeatureVersion: String?,
     includesInterpretation: Boolean,
 ): JSONObject {
     val features = JSONArray()
@@ -75,12 +77,12 @@ private fun createManifestJson(
                 .put("version", HwdnFormatVersion),
         )
 
-    if (includePageLayout) {
+    if (pageLayoutFeatureVersion != null) {
         features.put(
             JSONObject()
                 .put("name", "generic-notes-page-layout")
                 .put("required", false)
-                .put("version", "1"),
+                .put("version", pageLayoutFeatureVersion),
         )
     }
 
@@ -175,8 +177,18 @@ private fun NotePageLayout.shouldSerialize(): Boolean =
     normalizedPageCount > 1 ||
         scrollDirection != null ||
         displayMode != PageDisplayMode.Seamless ||
+        pageShape != PageShapePrimitive.Rectangle ||
         pageWidthPx != null ||
         pageHeightPx != null
+
+private fun NotePageLayout.featureVersionIfSerialized(): String? {
+    if (!shouldSerialize()) return null
+    return if (pageShape == PageShapePrimitive.Rectangle) {
+        GenericNotesPageLayoutFeatureVersion1
+    } else {
+        GenericNotesPageLayoutFeatureVersion2
+    }
+}
 
 private fun NotePageLayout.toJson(canvasWidth: Int, canvasHeight: Int): JSONObject {
     val pageCount = normalizedPageCount
@@ -192,7 +204,7 @@ private fun NotePageLayout.toJson(canvasWidth: Int, canvasHeight: Int): JSONObje
     }.coerceAtLeast(1)
 
     return JSONObject()
-        .put("version", 1)
+        .put("version", if (pageShape == PageShapePrimitive.Rectangle) 1 else 2)
         .put("pageCount", pageCount)
         .put("displayMode", displayMode.serializedName)
         .put(
@@ -202,6 +214,9 @@ private fun NotePageLayout.toJson(canvasWidth: Int, canvasHeight: Int): JSONObje
                 .put("height", pageHeightPx?.coerceAtLeast(1) ?: resolvedPageHeight),
         )
         .apply {
+            if (pageShape != PageShapePrimitive.Rectangle) {
+                put("pageShape", pageShape.serializedName)
+            }
             scrollDirection?.let { put("scrollDirection", it.serializedName) }
         }
 }
@@ -257,6 +272,9 @@ private fun DrawingTool.toBrushJson(): JSONObject =
                 .put("opacity", 1)
                 .put("pressureCurve", "none")
     }
+
+private const val GenericNotesPageLayoutFeatureVersion1 = "1"
+private const val GenericNotesPageLayoutFeatureVersion2 = "2"
 
 private fun DrawingTool.exportPressure(pressure: Float): Float =
     when (this) {

@@ -4,6 +4,7 @@ import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.Paint
+import android.graphics.Path
 import android.graphics.PorterDuff
 import android.graphics.PorterDuffXfermode
 import android.graphics.RectF
@@ -145,7 +146,7 @@ internal class InkCanvasView(context: Context) : View(context) {
         canvas.translate(canvasOffsetX, canvasOffsetY)
         canvas.scale(zoomScale, zoomScale)
         drawPageBackgrounds(canvas)
-        inkBitmap?.let { bitmap -> canvas.drawBitmap(bitmap, 0f, 0f, null) }
+        inkBitmap?.let { bitmap -> drawInkBitmap(canvas, bitmap) }
         drawPageSeparators(canvas)
         drawPageOutlines(canvas)
         if (isEraserPreviewVisible) {
@@ -225,23 +226,22 @@ internal class InkCanvasView(context: Context) : View(context) {
     }
 
     private fun drawPageBackgrounds(canvas: Canvas) {
-        if (pageLayout.displayMode != PageDisplayMode.Split) {
-            canvas.drawRect(0f, 0f, width.toFloat(), height.toFloat(), canvasBackgroundPaint)
-            return
-        }
-
-        val pageCount = pageLayout.normalizedPageCount
-        val direction = pageLayout.scrollDirection
-        if (pageCount <= 1 || direction == null) {
+        val shouldDrawIndividualPages = pageLayout.displayMode == PageDisplayMode.Split ||
+            pageLayout.pageShape != PageShapePrimitive.Rectangle
+        if (!shouldDrawIndividualPages) {
             canvas.drawRect(0f, 0f, width.toFloat(), height.toFloat(), canvasBackgroundPaint)
             return
         }
 
         canvas.drawRect(0f, 0f, width.toFloat(), height.toFloat(), pageGapPaint)
-        drawSplitPageRects(canvas, direction, pageCount, canvasBackgroundPaint)
+        forEachVisiblePageBounds { bounds ->
+            drawPageShape(canvas, bounds, canvasBackgroundPaint)
+        }
     }
 
     private fun drawPageSeparators(canvas: Canvas) {
+        if (pageLayout.pageShape != PageShapePrimitive.Rectangle) return
+
         val pageCount = pageLayout.normalizedPageCount
         val direction = pageLayout.scrollDirection ?: return
         if (pageCount <= 1) return
@@ -289,41 +289,112 @@ internal class InkCanvasView(context: Context) : View(context) {
     private fun drawPageOutlines(canvas: Canvas) {
         val pageCount = pageLayout.normalizedPageCount
         val direction = pageLayout.scrollDirection
-        if (pageCount <= 1 || direction == null || pageLayout.displayMode != PageDisplayMode.Split) {
+        if (
+            pageLayout.pageShape == PageShapePrimitive.Rectangle &&
+            (pageCount <= 1 || direction == null || pageLayout.displayMode != PageDisplayMode.Split)
+        ) {
             canvas.drawRect(0f, 0f, width.toFloat(), height.toFloat(), canvasBorderPaint)
             return
         }
 
-        drawSplitPageRects(canvas, direction, pageCount, canvasBorderPaint)
+        forEachVisiblePageBounds { bounds ->
+            drawPageShape(canvas, bounds, canvasBorderPaint)
+        }
     }
 
-    private fun drawSplitPageRects(
-        canvas: Canvas,
-        direction: PageScrollDirection,
-        pageCount: Int,
-        paint: Paint,
-    ) {
+    private fun drawInkBitmap(canvas: Canvas, bitmap: Bitmap) {
+        if (pageLayout.displayMode != PageDisplayMode.Split && pageLayout.pageShape == PageShapePrimitive.Rectangle) {
+            canvas.drawBitmap(bitmap, 0f, 0f, null)
+            return
+        }
+
+        val pagePath = Path()
+        forEachVisiblePageBounds { bounds ->
+            addPageShapeToPath(pagePath, bounds)
+        }
+
+        canvas.save()
+        canvas.clipPath(pagePath)
+        canvas.drawBitmap(bitmap, 0f, 0f, null)
+        canvas.restore()
+    }
+
+    private inline fun forEachVisiblePageBounds(block: (RectF) -> Unit) {
+        val pageCount = pageLayout.normalizedPageCount
+        val direction = pageLayout.scrollDirection
+        val bounds = RectF()
+
+        if (pageCount <= 1 || direction == null) {
+            bounds.set(0f, 0f, width.toFloat(), height.toFloat())
+            block(bounds)
+            return
+        }
+
         when (direction) {
             PageScrollDirection.Vertical -> {
                 val pageHeight = height.toFloat() / pageCount
-                val halfGap = splitPageGapPx(pageHeight) / 2f
+                val halfGap = splitPageHalfGapPx(pageHeight)
                 for (pageIndex in 0 until pageCount) {
-                    val top = pageHeight * pageIndex + if (pageIndex == 0) 0f else halfGap
-                    val bottom = pageHeight * (pageIndex + 1) - if (pageIndex == pageCount - 1) 0f else halfGap
-                    canvas.drawRect(0f, top, width.toFloat(), bottom, paint)
+                    bounds.set(
+                        0f,
+                        pageHeight * pageIndex + if (pageIndex == 0) 0f else halfGap,
+                        width.toFloat(),
+                        pageHeight * (pageIndex + 1) - if (pageIndex == pageCount - 1) 0f else halfGap,
+                    )
+                    block(bounds)
                 }
             }
 
             PageScrollDirection.Horizontal -> {
                 val pageWidth = width.toFloat() / pageCount
-                val halfGap = splitPageGapPx(pageWidth) / 2f
+                val halfGap = splitPageHalfGapPx(pageWidth)
                 for (pageIndex in 0 until pageCount) {
-                    val left = pageWidth * pageIndex + if (pageIndex == 0) 0f else halfGap
-                    val right = pageWidth * (pageIndex + 1) - if (pageIndex == pageCount - 1) 0f else halfGap
-                    canvas.drawRect(left, 0f, right, height.toFloat(), paint)
+                    bounds.set(
+                        pageWidth * pageIndex + if (pageIndex == 0) 0f else halfGap,
+                        0f,
+                        pageWidth * (pageIndex + 1) - if (pageIndex == pageCount - 1) 0f else halfGap,
+                        height.toFloat(),
+                    )
+                    block(bounds)
                 }
             }
         }
+    }
+
+    private fun splitPageHalfGapPx(pageExtent: Float): Float =
+        if (pageLayout.displayMode == PageDisplayMode.Split) {
+            splitPageGapPx(pageExtent) / 2f
+        } else {
+            0f
+        }
+
+    private fun drawPageShape(canvas: Canvas, bounds: RectF, paint: Paint) {
+        val shapeBounds = bounds.pageShapeBounds()
+        when (pageLayout.pageShape) {
+            PageShapePrimitive.Rectangle,
+            PageShapePrimitive.Square -> canvas.drawRect(shapeBounds, paint)
+
+            PageShapePrimitive.Circle -> canvas.drawOval(shapeBounds, paint)
+        }
+    }
+
+    private fun addPageShapeToPath(path: Path, bounds: RectF) {
+        val shapeBounds = bounds.pageShapeBounds()
+        when (pageLayout.pageShape) {
+            PageShapePrimitive.Rectangle,
+            PageShapePrimitive.Square -> path.addRect(shapeBounds, Path.Direction.CW)
+
+            PageShapePrimitive.Circle -> path.addOval(shapeBounds, Path.Direction.CW)
+        }
+    }
+
+    private fun RectF.pageShapeBounds(): RectF {
+        if (pageLayout.pageShape == PageShapePrimitive.Rectangle) return RectF(this)
+
+        val side = min(width(), height())
+        val shapeLeft = left + ((width() - side) / 2f)
+        val shapeTop = top + ((height() - side) / 2f)
+        return RectF(shapeLeft, shapeTop, shapeLeft + side, shapeTop + side)
     }
 
     fun loadStrokes(documentStrokes: List<InkStroke>) {
@@ -788,34 +859,28 @@ internal class InkCanvasView(context: Context) : View(context) {
     private fun isPointInsideCanvas(x: Float, y: Float): Boolean =
         x in 0f..width.toFloat() &&
             y in 0f..height.toFloat() &&
-            !isPointInsideSplitPageGap(x, y)
+            isPointInsideVisiblePageShape(x, y)
 
-    private fun isPointInsideSplitPageGap(x: Float, y: Float): Boolean {
-        if (pageLayout.displayMode != PageDisplayMode.Split) return false
-
-        val pageCount = pageLayout.normalizedPageCount
-        val direction = pageLayout.scrollDirection ?: return false
-        if (pageCount <= 1) return false
-
-        return when (direction) {
-            PageScrollDirection.Vertical -> {
-                val pageHeight = height.toFloat() / pageCount
-                isCoordinateInsideSplitPageGap(y, pageHeight, pageCount)
-            }
-
-            PageScrollDirection.Horizontal -> {
-                val pageWidth = width.toFloat() / pageCount
-                isCoordinateInsideSplitPageGap(x, pageWidth, pageCount)
+    private fun isPointInsideVisiblePageShape(x: Float, y: Float): Boolean {
+        var isInside = false
+        forEachVisiblePageBounds { bounds ->
+            if (!isInside && isPointInsidePageShape(x, y, bounds)) {
+                isInside = true
             }
         }
+        return isInside
     }
 
-    private fun isCoordinateInsideSplitPageGap(coordinate: Float, pageExtent: Float, pageCount: Int): Boolean {
-        val halfGap = splitPageGapPx(pageExtent) / 2f
-        for (pageIndex in 1 until pageCount) {
-            if (abs(coordinate - (pageExtent * pageIndex)) <= halfGap) return true
-        }
-        return false
+    private fun isPointInsidePageShape(x: Float, y: Float, bounds: RectF): Boolean {
+        val shapeBounds = bounds.pageShapeBounds()
+        if (!shapeBounds.contains(x, y)) return false
+
+        if (pageLayout.pageShape != PageShapePrimitive.Circle) return true
+
+        val radius = min(shapeBounds.width(), shapeBounds.height()) / 2f
+        val dx = x - shapeBounds.centerX()
+        val dy = y - shapeBounds.centerY()
+        return (dx * dx) + (dy * dy) <= radius * radius
     }
 
     private fun isStylusStrokeActive(): Boolean =

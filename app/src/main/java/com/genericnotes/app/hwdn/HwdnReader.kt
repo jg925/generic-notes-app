@@ -9,6 +9,7 @@ import com.genericnotes.app.canvas.NotePageLayout
 import com.genericnotes.app.canvas.PageScrollDirection
 import com.genericnotes.app.canvas.drawingToolFromSerializedName
 import com.genericnotes.app.canvas.pageDisplayModeFromSerializedName
+import com.genericnotes.app.canvas.pageShapePrimitiveFromSerializedName
 import com.genericnotes.app.canvas.pageScrollDirectionFromSerializedName
 import java.io.ByteArrayInputStream
 import java.io.ByteArrayOutputStream
@@ -152,6 +153,7 @@ private fun JSONObject?.toNotePageLayout(): NotePageLayout {
         pageCount = pageCount,
         scrollDirection = scrollDirection,
         displayMode = pageDisplayModeFromSerializedName(optStringOrNull("displayMode")),
+        pageShape = pageShapePrimitiveFromSerializedName(optStringOrNull("pageShape")),
         pageWidthPx = pageSize?.optPositiveInt("width"),
         pageHeightPx = pageSize?.optPositiveInt("height"),
     )
