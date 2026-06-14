@@ -30,7 +30,10 @@ internal class InkCanvasView(context: Context) : View(context) {
     var pageLayout: NotePageLayout = NotePageLayout()
         set(value) {
             if (field == value) return
+            val couldResetZoom = canResetZoom
             field = value
+            clampCanvasOffset()
+            if (couldResetZoom != canResetZoom) notifyCanResetZoomChanged()
             invalidate()
         }
     var onCanUndoChanged: ((Boolean) -> Unit)? = null
@@ -48,6 +51,8 @@ internal class InkCanvasView(context: Context) : View(context) {
             field = value
             value?.invoke(canRedo)
         }
+    var onStrokeAddedToHistory: (() -> Unit)? = null
+    var onStrokeRemovedFromHistory: (() -> Unit)? = null
 
     val canUndo: Boolean
         get() = strokes.isNotEmpty()
@@ -121,7 +126,15 @@ internal class InkCanvasView(context: Context) : View(context) {
         inkBitmap?.recycle()
         inkBitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
         inkCanvas = Canvas(inkBitmap!!)
-        resetZoomToFullScreen()
+        if (oldWidth <= 0 || oldHeight <= 0) {
+            resetZoomToFullScreen()
+        } else {
+            setCanvasTransform(
+                scale = zoomScale,
+                offsetX = canvasOffsetX,
+                offsetY = canvasOffsetY,
+            )
+        }
         redrawAllStrokes()
     }
 
@@ -362,6 +375,13 @@ internal class InkCanvasView(context: Context) : View(context) {
         return true
     }
 
+    fun clearRedoHistory() {
+        if (redoStrokes.isEmpty()) return
+
+        redoStrokes.clear()
+        notifyHistoryChanged()
+    }
+
     private fun startStrokeFromPointer(event: MotionEvent, pointerIndex: Int) {
         if (!acceptsInputFrom(event, pointerIndex)) return
         val canvasX = viewToCanvasX(event.getX(pointerIndex))
@@ -378,6 +398,7 @@ internal class InkCanvasView(context: Context) : View(context) {
         ).also { stroke ->
             redoStrokes.clear()
             strokes.add(stroke)
+            onStrokeAddedToHistory?.invoke()
             notifyHistoryChanged()
             appendHistoricalPoints(stroke, event, pointerIndex)
             appendPoint(
@@ -664,8 +685,8 @@ internal class InkCanvasView(context: Context) : View(context) {
         activeStroke = null
         activePointerId = null
         activePointerToolType = MotionEvent.TOOL_TYPE_UNKNOWN
-        if (removeStroke && stroke != null) {
-            strokes.remove(stroke)
+        if (removeStroke && stroke != null && strokes.remove(stroke)) {
+            onStrokeRemovedFromHistory?.invoke()
             redrawAllStrokes()
             notifyHistoryChanged()
         }
@@ -716,16 +737,42 @@ internal class InkCanvasView(context: Context) : View(context) {
 
         val scaledWidth = width * zoomScale
         val scaledHeight = height * zoomScale
-        canvasOffsetX = if (scaledWidth <= width) {
-            (width - scaledWidth) / 2f
-        } else {
-            canvasOffsetX.coerceIn(width - scaledWidth, 0f)
+        val pageCount = pageLayout.normalizedPageCount
+        val scrollDirection = pageLayout.scrollDirection?.takeIf { pageCount > 1 }
+
+        canvasOffsetX = clampedCanvasOffset(
+            currentOffset = canvasOffsetX,
+            viewExtent = width,
+            scaledExtent = scaledWidth,
+            pageCount = pageCount,
+            isPagedScrollAxis = scrollDirection == PageScrollDirection.Horizontal,
+        )
+        canvasOffsetY = clampedCanvasOffset(
+            currentOffset = canvasOffsetY,
+            viewExtent = height,
+            scaledExtent = scaledHeight,
+            pageCount = pageCount,
+            isPagedScrollAxis = scrollDirection == PageScrollDirection.Vertical,
+        )
+    }
+
+    private fun clampedCanvasOffset(
+        currentOffset: Float,
+        viewExtent: Int,
+        scaledExtent: Float,
+        pageCount: Int,
+        isPagedScrollAxis: Boolean,
+    ): Float {
+        if (scaledExtent > viewExtent) {
+            return currentOffset.coerceIn(viewExtent - scaledExtent, 0f)
         }
-        canvasOffsetY = if (scaledHeight <= height) {
-            (height - scaledHeight) / 2f
+
+        val anchorExtent = if (isPagedScrollAxis) {
+            viewExtent.toFloat() / pageCount
         } else {
-            canvasOffsetY.coerceIn(height - scaledHeight, 0f)
+            viewExtent.toFloat()
         }
+        return (anchorExtent - (anchorExtent * zoomScale)) / 2f
     }
 
     private fun notifyCanResetZoomChanged() {
