@@ -6,14 +6,18 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
@@ -37,6 +41,8 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import com.genericnotes.app.canvas.DrawingTool
@@ -44,6 +50,7 @@ import com.genericnotes.app.canvas.InkCanvasView
 import com.genericnotes.app.canvas.NotePageLayout
 import com.genericnotes.app.canvas.PageDisplayMode
 import com.genericnotes.app.canvas.PageScrollDirection
+import com.genericnotes.app.canvas.PageShapePrimitive
 import com.genericnotes.app.hwdn.HwdnDocument
 import com.genericnotes.app.hwdn.HwdnInterpretation
 import com.genericnotes.app.hwdn.HwdnMimeType
@@ -58,6 +65,7 @@ import com.genericnotes.app.settings.saveAppCanvasSettings
 import com.genericnotes.app.ui.dictation.DictationPreviewSheet
 import com.genericnotes.app.ui.dictation.DictationUnderstanding
 import com.genericnotes.app.ui.dictation.rememberDictationController
+import kotlin.math.roundToInt
 
 @Composable
 internal fun NotesCanvasScreen(
@@ -85,6 +93,16 @@ internal fun NotesCanvasScreen(
     var pageDisplayMode by remember(initialDocument) {
         mutableStateOf(initialPageLayout.displayMode)
     }
+    var pageShape by remember(initialDocument) {
+        mutableStateOf(initialPageLayout.pageShape)
+    }
+    var pageWidthPx by remember(initialDocument) {
+        mutableStateOf(initialPageLayout.pageWidthPx?.takeIf { it > 0 })
+    }
+    var pageHeightPx by remember(initialDocument) {
+        mutableStateOf(initialPageLayout.pageHeightPx?.takeIf { it > 0 })
+    }
+    var isPageSettingsVisible by remember(initialDocument) { mutableStateOf(false) }
     val verticalScrollState = rememberScrollState()
     val horizontalScrollState = rememberScrollState()
     var fileName by remember(initialDocument) {
@@ -148,6 +166,9 @@ internal fun NotesCanvasScreen(
             pageCount = pageCount,
             scrollDirection = pageScrollDirection,
             displayMode = pageDisplayMode,
+            pageShape = pageShape,
+            pageWidthPx = pageWidthPx,
+            pageHeightPx = pageHeightPx,
         )
 
     fun recordNewStrokeAction() {
@@ -162,6 +183,8 @@ internal fun NotesCanvasScreen(
     }
 
     fun addPage() {
+        if (pageShape != PageShapePrimitive.Rectangle) return
+
         val nextScrollDirection = pageScrollDirection ?: preferredPageDirection
         val action = CanvasHistoryAction.PageAdded(
             beforePageCount = pageCount,
@@ -279,14 +302,37 @@ internal fun NotesCanvasScreen(
             .background(Color(0xFFE9E9E9))
     ) {
         val density = LocalDensity.current
-        val savedPageWidth = initialPageLayout.pageWidthPx
+        val savedPageWidth = pageWidthPx
             ?.takeIf { it > 0 }
             ?.let { with(density) { it.toDp() } }
-        val savedPageHeight = initialPageLayout.pageHeightPx
+        val savedPageHeight = pageHeightPx
             ?.takeIf { it > 0 }
             ?.let { with(density) { it.toDp() } }
         val pageWidth = savedPageWidth ?: maxWidth
         val pageHeight = savedPageHeight ?: maxHeight
+        fun coercePageExtent(value: Dp): Dp =
+            when {
+                value < MinPageExtent -> MinPageExtent
+                value > MaxPageExtent -> MaxPageExtent
+                else -> value
+            }
+
+        fun setCustomPageSize(width: Dp, height: Dp) {
+            pageWidthPx = with(density) { coercePageExtent(width).roundToPx().coerceAtLeast(1) }
+            pageHeightPx = with(density) { coercePageExtent(height).roundToPx().coerceAtLeast(1) }
+        }
+
+        fun setPageShapePrimitive(shape: PageShapePrimitive) {
+            if (pageCount > 1 && shape != pageShape) return
+
+            pageShape = shape
+        }
+
+        fun resetPageSize() {
+            pageWidthPx = null
+            pageHeightPx = null
+        }
+
         val renderedDirection = pageScrollDirection ?: preferredPageDirection
         val canvasWidth = if (renderedDirection == PageScrollDirection.Horizontal) {
             pageWidth * pageCount.toFloat()
@@ -394,6 +440,11 @@ internal fun NotesCanvasScreen(
                 preferredDirection = preferredPageDirection,
                 lockedDirection = pageScrollDirection,
                 displayMode = pageDisplayMode,
+                pageShape = pageShape,
+                pageWidth = pageWidth,
+                pageHeight = pageHeight,
+                isPageSettingsVisible = isPageSettingsVisible,
+                canChangePageShape = pageCount <= 1,
                 accentColor = accentColor,
                 onPreferredDirectionChange = { direction ->
                     if (pageScrollDirection == null) {
@@ -401,6 +452,15 @@ internal fun NotesCanvasScreen(
                     }
                 },
                 onDisplayModeChange = { pageDisplayMode = it },
+                onTogglePageSettings = { isPageSettingsVisible = !isPageSettingsVisible },
+                onPageShapeChange = ::setPageShapePrimitive,
+                onPageWidthChange = { nextWidth ->
+                    setCustomPageSize(nextWidth, pageHeight)
+                },
+                onPageHeightChange = { nextHeight ->
+                    setCustomPageSize(pageWidth, nextHeight)
+                },
+                onResetPageSize = ::resetPageSize,
                 onAddPage = ::addPage,
                 modifier = Modifier
                     .align(Alignment.BottomCenter)
@@ -486,72 +546,235 @@ private fun PageControls(
     preferredDirection: PageScrollDirection,
     lockedDirection: PageScrollDirection?,
     displayMode: PageDisplayMode,
+    pageShape: PageShapePrimitive,
+    pageWidth: Dp,
+    pageHeight: Dp,
+    isPageSettingsVisible: Boolean,
+    canChangePageShape: Boolean,
     accentColor: Color,
     onPreferredDirectionChange: (PageScrollDirection) -> Unit,
     onDisplayModeChange: (PageDisplayMode) -> Unit,
+    onTogglePageSettings: () -> Unit,
+    onPageShapeChange: (PageShapePrimitive) -> Unit,
+    onPageWidthChange: (Dp) -> Unit,
+    onPageHeightChange: (Dp) -> Unit,
+    onResetPageSize: () -> Unit,
     onAddPage: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val selectedDirection = lockedDirection ?: preferredDirection
     val isDirectionLocked = lockedDirection != null
 
-    Surface(
+    Column(
         modifier = modifier,
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        if (isPageSettingsVisible) {
+            PageSettingsPanel(
+                pageShape = pageShape,
+                pageWidth = pageWidth,
+                pageHeight = pageHeight,
+                canChangePageShape = canChangePageShape,
+                accentColor = accentColor,
+                onPageShapeChange = onPageShapeChange,
+                onPageWidthChange = onPageWidthChange,
+                onPageHeightChange = onPageHeightChange,
+                onResetPageSize = onResetPageSize,
+            )
+        }
+
+        Surface(
+            color = Color(0xFFF4F4F4),
+            contentColor = accentColor,
+            shape = RoundedCornerShape(8.dp),
+            tonalElevation = 2.dp,
+            shadowElevation = 2.dp,
+        ) {
+            Row(
+                modifier = Modifier.padding(start = 12.dp, top = 6.dp, end = 6.dp, bottom = 6.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    text = "$currentPage / $pageCount",
+                    color = accentColor,
+                    modifier = Modifier.padding(end = 8.dp),
+                )
+                PageControlButton(
+                    icon = PageSettingsIcon,
+                    contentDescription = "page settings",
+                    selected = isPageSettingsVisible,
+                    accentColor = accentColor,
+                    onClick = onTogglePageSettings,
+                )
+                PageControlButton(
+                    icon = VerticalPagesIcon,
+                    contentDescription = "vertical pages",
+                    selected = selectedDirection == PageScrollDirection.Vertical,
+                    enabled = !isDirectionLocked,
+                    accentColor = accentColor,
+                    onClick = { onPreferredDirectionChange(PageScrollDirection.Vertical) },
+                )
+                PageControlButton(
+                    icon = HorizontalPagesIcon,
+                    contentDescription = "horizontal pages",
+                    selected = selectedDirection == PageScrollDirection.Horizontal,
+                    enabled = !isDirectionLocked,
+                    accentColor = accentColor,
+                    onClick = { onPreferredDirectionChange(PageScrollDirection.Horizontal) },
+                )
+                PageControlButton(
+                    icon = SeamlessPagesIcon,
+                    contentDescription = "seamless pages",
+                    selected = displayMode == PageDisplayMode.Seamless,
+                    accentColor = accentColor,
+                    onClick = { onDisplayModeChange(PageDisplayMode.Seamless) },
+                )
+                PageControlButton(
+                    icon = SplitPagesIcon,
+                    contentDescription = "split pages",
+                    selected = displayMode == PageDisplayMode.Split,
+                    accentColor = accentColor,
+                    onClick = { onDisplayModeChange(PageDisplayMode.Split) },
+                )
+                PageControlButton(
+                    icon = AddPageIcon,
+                    contentDescription = "add page",
+                    selected = false,
+                    enabled = pageShape == PageShapePrimitive.Rectangle,
+                    accentColor = accentColor,
+                    onClick = onAddPage,
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun PageSettingsPanel(
+    pageShape: PageShapePrimitive,
+    pageWidth: Dp,
+    pageHeight: Dp,
+    canChangePageShape: Boolean,
+    accentColor: Color,
+    onPageShapeChange: (PageShapePrimitive) -> Unit,
+    onPageWidthChange: (Dp) -> Unit,
+    onPageHeightChange: (Dp) -> Unit,
+    onResetPageSize: () -> Unit,
+) {
+    Surface(
         color = Color(0xFFF4F4F4),
         contentColor = accentColor,
         shape = RoundedCornerShape(8.dp),
         tonalElevation = 2.dp,
         shadowElevation = 2.dp,
     ) {
-        Row(
-            modifier = Modifier.padding(start = 12.dp, top = 6.dp, end = 6.dp, bottom = 6.dp),
-            verticalAlignment = Alignment.CenterVertically,
+        Column(
+            modifier = Modifier
+                .widthIn(min = 288.dp, max = 420.dp)
+                .padding(8.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            Text(
-                text = "$currentPage / $pageCount",
-                color = accentColor,
-                modifier = Modifier.padding(end = 8.dp),
-            )
-            PageControlButton(
-                icon = VerticalPagesIcon,
-                contentDescription = "vertical pages",
-                selected = selectedDirection == PageScrollDirection.Vertical,
-                enabled = !isDirectionLocked,
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(4.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                PageShapePrimitive.entries.forEach { shape ->
+                    PageControlButton(
+                        icon = shape.icon(),
+                        contentDescription = shape.contentDescription(),
+                        selected = pageShape == shape,
+                        enabled = canChangePageShape,
+                        accentColor = accentColor,
+                        onClick = { onPageShapeChange(shape) },
+                    )
+                }
+                PageControlButton(
+                    icon = FitScreenIcon,
+                    contentDescription = "reset page size",
+                    selected = false,
+                    accentColor = accentColor,
+                    onClick = onResetPageSize,
+                )
+            }
+
+            PageSizeStepper(
+                label = "W",
+                value = pageWidth,
+                decreaseDescription = "decrease page width",
+                increaseDescription = "increase page width",
                 accentColor = accentColor,
-                onClick = { onPreferredDirectionChange(PageScrollDirection.Vertical) },
+                onValueChange = onPageWidthChange,
             )
-            PageControlButton(
-                icon = HorizontalPagesIcon,
-                contentDescription = "horizontal pages",
-                selected = selectedDirection == PageScrollDirection.Horizontal,
-                enabled = !isDirectionLocked,
+            PageSizeStepper(
+                label = "H",
+                value = pageHeight,
+                decreaseDescription = "decrease page height",
+                increaseDescription = "increase page height",
                 accentColor = accentColor,
-                onClick = { onPreferredDirectionChange(PageScrollDirection.Horizontal) },
-            )
-            PageControlButton(
-                icon = SeamlessPagesIcon,
-                contentDescription = "seamless pages",
-                selected = displayMode == PageDisplayMode.Seamless,
-                accentColor = accentColor,
-                onClick = { onDisplayModeChange(PageDisplayMode.Seamless) },
-            )
-            PageControlButton(
-                icon = SplitPagesIcon,
-                contentDescription = "split pages",
-                selected = displayMode == PageDisplayMode.Split,
-                accentColor = accentColor,
-                onClick = { onDisplayModeChange(PageDisplayMode.Split) },
-            )
-            PageControlButton(
-                icon = AddPageIcon,
-                contentDescription = "add page",
-                selected = false,
-                accentColor = accentColor,
-                onClick = onAddPage,
+                onValueChange = onPageHeightChange,
             )
         }
     }
 }
+
+@Composable
+private fun PageSizeStepper(
+    label: String,
+    value: Dp,
+    decreaseDescription: String,
+    increaseDescription: String,
+    accentColor: Color,
+    onValueChange: (Dp) -> Unit,
+) {
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(4.dp),
+    ) {
+        Text(
+            text = label,
+            color = accentColor,
+            textAlign = TextAlign.Center,
+            modifier = Modifier.width(48.dp),
+        )
+        PageControlButton(
+            icon = DecreaseIcon,
+            contentDescription = decreaseDescription,
+            selected = false,
+            enabled = value > MinPageExtent,
+            accentColor = accentColor,
+            onClick = { onValueChange(value - PageExtentStep) },
+        )
+        Text(
+            text = "${value.value.roundToInt()}dp",
+            color = accentColor,
+            textAlign = TextAlign.Center,
+            modifier = Modifier.width(72.dp),
+        )
+        PageControlButton(
+            icon = IncreaseIcon,
+            contentDescription = increaseDescription,
+            selected = false,
+            enabled = value < MaxPageExtent,
+            accentColor = accentColor,
+            onClick = { onValueChange(value + PageExtentStep) },
+        )
+    }
+}
+
+private fun PageShapePrimitive.icon(): ImageVector =
+    when (this) {
+        PageShapePrimitive.Rectangle -> RectanglePageIcon
+        PageShapePrimitive.Square -> SquarePageIcon
+        PageShapePrimitive.Circle -> CirclePageIcon
+    }
+
+private fun PageShapePrimitive.contentDescription(): String =
+    when (this) {
+        PageShapePrimitive.Rectangle -> "rectangle page"
+        PageShapePrimitive.Square -> "square page"
+        PageShapePrimitive.Circle -> "circle page"
+    }
 
 @Composable
 private fun PageControlButton(
@@ -584,6 +807,10 @@ private fun PageControlButton(
         }
     }
 }
+
+private val MinPageExtent = 240.dp
+private val MaxPageExtent = 2400.dp
+private val PageExtentStep = 80.dp
 
 @Composable
 private fun InterpretationActionButton(

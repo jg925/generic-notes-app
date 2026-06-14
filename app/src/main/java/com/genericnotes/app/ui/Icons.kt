@@ -1,6 +1,7 @@
 package com.genericnotes.app.ui
 
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.PathFillType
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.graphics.vector.path
@@ -409,6 +410,52 @@ internal val SettingsIcon: ImageVector =
         }
     }.build()
 
+internal val PageSettingsIcon: ImageVector =
+    ImageVector.Builder(
+        name = "PageSettings",
+        defaultWidth = 24.dp,
+        defaultHeight = 24.dp,
+        viewportWidth = 24f,
+        viewportHeight = 24f,
+    ).apply {
+        path(
+            fill = SolidColor(Color.Black),
+            pathFillType = PathFillType.EvenOdd,
+        ) {
+            moveTo(10.4f, 2.5f)
+            lineTo(13.6f, 2.5f)
+            lineTo(14.22f, 5.35f)
+            lineTo(16.56f, 3.78f)
+            lineTo(19.02f, 6.24f)
+            lineTo(17.45f, 8.58f)
+            lineTo(20.5f, 9.45f)
+            lineTo(20.5f, 14.55f)
+            lineTo(17.45f, 15.42f)
+            lineTo(19.02f, 17.76f)
+            lineTo(16.56f, 20.22f)
+            lineTo(14.22f, 18.65f)
+            lineTo(13.6f, 21.5f)
+            lineTo(10.4f, 21.5f)
+            lineTo(9.78f, 18.65f)
+            lineTo(7.44f, 20.22f)
+            lineTo(4.98f, 17.76f)
+            lineTo(6.55f, 15.42f)
+            lineTo(3.5f, 14.55f)
+            lineTo(3.5f, 9.45f)
+            lineTo(6.55f, 8.58f)
+            lineTo(4.98f, 6.24f)
+            lineTo(7.44f, 3.78f)
+            lineTo(9.78f, 5.35f)
+            close()
+            moveTo(12.0f, 8.4f)
+            curveTo(10.01f, 8.4f, 8.4f, 10.01f, 8.4f, 12.0f)
+            curveTo(8.4f, 13.99f, 10.01f, 15.6f, 12.0f, 15.6f)
+            curveTo(13.99f, 15.6f, 15.6f, 13.99f, 15.6f, 12.0f)
+            curveTo(15.6f, 10.01f, 13.99f, 8.4f, 12.0f, 8.4f)
+            close()
+        }
+    }.build()
+
 internal val VerticalPagesIcon: ImageVector =
     ImageVector.Builder(
         name = "VerticalPages",
@@ -432,6 +479,116 @@ internal val VerticalPagesIcon: ImageVector =
             lineTo(13.0f, 10.0f)
             lineTo(13.0f, 14.0f)
             lineTo(11.0f, 14.0f)
+            close()
+        }
+    }.build()
+
+internal val RectanglePageIcon: ImageVector =
+    ImageVector.Builder(
+        name = "RectanglePage",
+        defaultWidth = 24.dp,
+        defaultHeight = 24.dp,
+        viewportWidth = 24f,
+        viewportHeight = 24f,
+    ).apply {
+        path(fill = SolidColor(Color.Black)) {
+            moveTo(6.0f, 3.0f)
+            lineTo(18.0f, 3.0f)
+            lineTo(18.0f, 21.0f)
+            lineTo(6.0f, 21.0f)
+            close()
+            moveTo(8.0f, 5.0f)
+            lineTo(8.0f, 19.0f)
+            lineTo(16.0f, 19.0f)
+            lineTo(16.0f, 5.0f)
+            close()
+        }
+    }.build()
+
+internal val SquarePageIcon: ImageVector =
+    ImageVector.Builder(
+        name = "SquarePage",
+        defaultWidth = 24.dp,
+        defaultHeight = 24.dp,
+        viewportWidth = 24f,
+        viewportHeight = 24f,
+    ).apply {
+        path(fill = SolidColor(Color.Black)) {
+            moveTo(4.0f, 4.0f)
+            lineTo(20.0f, 4.0f)
+            lineTo(20.0f, 20.0f)
+            lineTo(4.0f, 20.0f)
+            close()
+            moveTo(6.0f, 6.0f)
+            lineTo(6.0f, 18.0f)
+            lineTo(18.0f, 18.0f)
+            lineTo(18.0f, 6.0f)
+            close()
+        }
+    }.build()
+
+internal val CirclePageIcon: ImageVector =
+    ImageVector.Builder(
+        name = "CirclePage",
+        defaultWidth = 24.dp,
+        defaultHeight = 24.dp,
+        viewportWidth = 24f,
+        viewportHeight = 24f,
+    ).apply {
+        path(fill = SolidColor(Color.Black)) {
+            moveTo(12.0f, 3.0f)
+            curveTo(7.03f, 3.0f, 3.0f, 7.03f, 3.0f, 12.0f)
+            curveTo(3.0f, 16.97f, 7.03f, 21.0f, 12.0f, 21.0f)
+            curveTo(16.97f, 21.0f, 21.0f, 16.97f, 21.0f, 12.0f)
+            curveTo(21.0f, 7.03f, 16.97f, 3.0f, 12.0f, 3.0f)
+            close()
+            moveTo(12.0f, 5.0f)
+            curveTo(15.87f, 5.0f, 19.0f, 8.13f, 19.0f, 12.0f)
+            curveTo(19.0f, 15.87f, 15.87f, 19.0f, 12.0f, 19.0f)
+            curveTo(8.13f, 19.0f, 5.0f, 15.87f, 5.0f, 12.0f)
+            curveTo(5.0f, 8.13f, 8.13f, 5.0f, 12.0f, 5.0f)
+            close()
+        }
+    }.build()
+
+internal val IncreaseIcon: ImageVector =
+    ImageVector.Builder(
+        name = "Increase",
+        defaultWidth = 24.dp,
+        defaultHeight = 24.dp,
+        viewportWidth = 24f,
+        viewportHeight = 24f,
+    ).apply {
+        path(fill = SolidColor(Color.Black)) {
+            moveTo(11.0f, 5.0f)
+            lineTo(13.0f, 5.0f)
+            lineTo(13.0f, 11.0f)
+            lineTo(19.0f, 11.0f)
+            lineTo(19.0f, 13.0f)
+            lineTo(13.0f, 13.0f)
+            lineTo(13.0f, 19.0f)
+            lineTo(11.0f, 19.0f)
+            lineTo(11.0f, 13.0f)
+            lineTo(5.0f, 13.0f)
+            lineTo(5.0f, 11.0f)
+            lineTo(11.0f, 11.0f)
+            close()
+        }
+    }.build()
+
+internal val DecreaseIcon: ImageVector =
+    ImageVector.Builder(
+        name = "Decrease",
+        defaultWidth = 24.dp,
+        defaultHeight = 24.dp,
+        viewportWidth = 24f,
+        viewportHeight = 24f,
+    ).apply {
+        path(fill = SolidColor(Color.Black)) {
+            moveTo(5.0f, 11.0f)
+            lineTo(19.0f, 11.0f)
+            lineTo(19.0f, 13.0f)
+            lineTo(5.0f, 13.0f)
             close()
         }
     }.build()
