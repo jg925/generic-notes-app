@@ -87,7 +87,6 @@ internal fun NotesCanvasScreen(
     }
     val verticalScrollState = rememberScrollState()
     val horizontalScrollState = rememberScrollState()
-    var previousPageCount by remember(initialDocument) { mutableStateOf(pageCount) }
     var fileName by remember(initialDocument) {
         mutableStateOf(initialDocument?.fileName?.withoutHwdnExtension()?.take(MaxFileNameLength) ?: "")
     }
@@ -274,16 +273,6 @@ internal fun NotesCanvasScreen(
         }
     }
 
-    LaunchedEffect(pageCount, pageScrollDirection) {
-        if (pageCount > previousPageCount) {
-            when (pageScrollDirection ?: preferredPageDirection) {
-                PageScrollDirection.Vertical -> verticalScrollState.animateScrollTo(verticalScrollState.maxValue)
-                PageScrollDirection.Horizontal -> horizontalScrollState.animateScrollTo(horizontalScrollState.maxValue)
-            }
-        }
-        previousPageCount = pageCount
-    }
-
     BoxWithConstraints(
         modifier = Modifier
             .fillMaxSize()
@@ -313,14 +302,12 @@ internal fun NotesCanvasScreen(
             PageScrollDirection.Vertical -> currentPageNumber(
                 scrollOffsetPx = verticalScrollState.value,
                 pageExtentPx = with(density) { pageHeight.toPx() },
-                viewportExtentPx = with(density) { maxHeight.toPx() },
                 pageCount = pageCount,
             )
 
             PageScrollDirection.Horizontal -> currentPageNumber(
                 scrollOffsetPx = horizontalScrollState.value,
                 pageExtentPx = with(density) { pageWidth.toPx() },
-                viewportExtentPx = with(density) { maxWidth.toPx() },
                 pageCount = pageCount,
             )
         }
@@ -485,13 +472,11 @@ private sealed interface CanvasHistoryAction {
 private fun currentPageNumber(
     scrollOffsetPx: Int,
     pageExtentPx: Float,
-    viewportExtentPx: Float,
     pageCount: Int,
 ): Int {
     if (pageCount <= 1 || pageExtentPx <= 0f) return 1
 
-    val centeredOffsetPx = scrollOffsetPx + (viewportExtentPx / 2f)
-    return ((centeredOffsetPx / pageExtentPx).toInt() + 1).coerceIn(1, pageCount)
+    return ((scrollOffsetPx / pageExtentPx).toInt() + 1).coerceIn(1, pageCount)
 }
 
 @Composable

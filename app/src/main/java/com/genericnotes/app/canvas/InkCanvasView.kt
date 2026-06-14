@@ -30,7 +30,10 @@ internal class InkCanvasView(context: Context) : View(context) {
     var pageLayout: NotePageLayout = NotePageLayout()
         set(value) {
             if (field == value) return
+            val couldResetZoom = canResetZoom
             field = value
+            clampCanvasOffset()
+            if (couldResetZoom != canResetZoom) notifyCanResetZoomChanged()
             invalidate()
         }
     var onCanUndoChanged: ((Boolean) -> Unit)? = null
@@ -734,16 +737,42 @@ internal class InkCanvasView(context: Context) : View(context) {
 
         val scaledWidth = width * zoomScale
         val scaledHeight = height * zoomScale
-        canvasOffsetX = if (scaledWidth <= width) {
-            (width - scaledWidth) / 2f
-        } else {
-            canvasOffsetX.coerceIn(width - scaledWidth, 0f)
+        val pageCount = pageLayout.normalizedPageCount
+        val scrollDirection = pageLayout.scrollDirection?.takeIf { pageCount > 1 }
+
+        canvasOffsetX = clampedCanvasOffset(
+            currentOffset = canvasOffsetX,
+            viewExtent = width,
+            scaledExtent = scaledWidth,
+            pageCount = pageCount,
+            isPagedScrollAxis = scrollDirection == PageScrollDirection.Horizontal,
+        )
+        canvasOffsetY = clampedCanvasOffset(
+            currentOffset = canvasOffsetY,
+            viewExtent = height,
+            scaledExtent = scaledHeight,
+            pageCount = pageCount,
+            isPagedScrollAxis = scrollDirection == PageScrollDirection.Vertical,
+        )
+    }
+
+    private fun clampedCanvasOffset(
+        currentOffset: Float,
+        viewExtent: Int,
+        scaledExtent: Float,
+        pageCount: Int,
+        isPagedScrollAxis: Boolean,
+    ): Float {
+        if (scaledExtent > viewExtent) {
+            return currentOffset.coerceIn(viewExtent - scaledExtent, 0f)
         }
-        canvasOffsetY = if (scaledHeight <= height) {
-            (height - scaledHeight) / 2f
+
+        val anchorExtent = if (isPagedScrollAxis) {
+            viewExtent.toFloat() / pageCount
         } else {
-            canvasOffsetY.coerceIn(height - scaledHeight, 0f)
+            viewExtent.toFloat()
         }
+        return (anchorExtent - (anchorExtent * zoomScale)) / 2f
     }
 
     private fun notifyCanResetZoomChanged() {
